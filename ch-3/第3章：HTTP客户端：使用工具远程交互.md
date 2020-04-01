@@ -93,5 +93,29 @@ resp, err := client.Do(req)
 ```
 代码 3-4: 发送 PUT 请求 (https://github.com/blackhat-go/bhg/ch-3/basic /main.go/)
 
-标准的Go `net/http` 库包含一些请求在发送到服务器之前对其进行操作的函数。通过阅读本章中的实战示例，您将学到一些更相关和实用的变体。但是首先，我们将向您展示如何对服务器收到的HTTP响应进行有目地的处理。
+标准的Go `net/http` 库包含一些请求在发送到服务器之前对其进行操作的函数。通过阅读本章中的实战示例，您将学到一些更相关和实用的变体。但是，先来演示下如何有目的地处理服务器收到的HTTP请求。
+
+## 使用结构体解析响应
+
+之前的章节已经学会了用Go创建并发送HTTP请求。示例代码中都未处理响应，基本上都忽略了。但是检测HTTP响应的组成是任何处理HTTP相关任务的关键，像读取响应体，访问cookies 和 headers，或者简单的检查HTTP状态码。
+
+为了演示状态码和响应体——本例中是Google的 robots.txt 文件，代码3-5简化了代码3-1中GET请求，用`ioutil.ReadAll()` 函数从响应体中读取数据，并检查错误，然后打印HTTP的状态码和响应体的内容。
+```go
+resp, err := http.Get("https://www.google.com/robots.txt") 
+if err != nil {
+    log.Panicln(err) 
+}
+// Print HTTP Status 
+fmt.Println(resp.Status)
+// Read and display response body
+body, err := ioutil.ReadAll(resp.Body) 
+if err != nil {
+    log.Panicln(err) 
+}
+fmt.Println(string(body))
+resp.Body.Close()
+```
+代码 3-5: 处理 HTTP 响应体 (https://github.com/blackhat-go/bhg/ch-3/basic/main.go/)
+
+收到响应后，在上面代码命名为 `resp`，通过访问暴露出的 `Status` 参数就能获取到状态字符串（例如，200 ok）；有一个类似的 `StatusCode` 参数，该参数仅访问状态字符串的整数部分，未在示例中展示。
 
