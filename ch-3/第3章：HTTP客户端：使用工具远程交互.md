@@ -119,3 +119,59 @@ resp.Body.Close()
 
 收到响应后，在上面代码命名为 `resp`，通过访问暴露出的 `Status` 参数就能获取到状态字符串（例如，200 ok）；有一个类似的 `StatusCode` 参数，该参数仅访问状态字符串的整数部分，未在示例中展示。
 
+响应中还暴露出一个`io.ReadCloser`类型的`Body`参数。`io.ReadCloser` 既是`io.Reader`又是 `io.Closer` 接口，或者是需要实现 `Close()` 函数的接口以关闭读取和执行清理。现在先不用考虑具体的细节；只是从`io.ReadCloser` 读取完数据后记得调用响应体`Close()`函数来关闭。通常使用`defer`关闭响应体；这能确保退出函数之前不会忘记关闭响应体。
+
+现在回到终端查看错误状态和响应体内容：
+```shell script
+$ go run main.go
+200 OK
+User-agent: * 
+Disallow: /search 
+Allow: /search/about 
+Disallow: /sdch 
+Disallow: /groups 
+Disallow: /index.html? 
+Disallow: /?
+Allow: /?hl=
+Disallow: /?hl=*&
+Allow: /?hl=*&gws_rd=ssl$ 
+Disallow: /?hl=*&*&gws_rd=ssl 
+--snip--
+```
+
+如果需要解析结构化数据——很可能会的——使用第2章的约定读取响应体并解码。举例，假如和端口使用JSON和API通信交互（如`/ping`），返回以下响应表明服务器状态：
+```json
+{"Message":"All is good with the world","Status":"Success"}
+```
+使用代码 3-6 中的程序与此端点交互并解码 JSON 消息。
+```go
+package main
+import { 
+    encoding/json"
+    log
+    net/http 
+}
+type Status struct { 
+    Message string 
+    Status string
+}
+func main() {
+    res, err := http.Post(
+        "http://IP:PORT/ping", 
+        "application/json", 
+        nil,
+    )
+    if err != nil {
+        log.Fatalln(err) 
+    }
+    var status Status
+    if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
+        log.Fatalln(err) 
+    }
+    defer res.Body.Close()
+    log.Printf("%s -> %s\n", status.Status, status.Message) }
+```
+代码 3-6: 解码 JSON 响应体 (https://github.com/blackhat-go/bhg/ch-3/basic-parsing/main.go/)
+
+代码先定义`Status`结构体，含义预期的服务器返回的元素。`main()`函数先发送`POST`请求，然后解析响应体。这之后就可以正常的使用`Status`结构——访问暴露出的`Statu`和`Message`数据类型
+
