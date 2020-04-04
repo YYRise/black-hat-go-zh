@@ -205,5 +205,15 @@ Shodan (https://www.shodan.io/)，自称为“世界上第一个互联网连接�
 
 我们在本节中没有明确指出每个步骤，但是您应该使用此列表作为指导来学习。开始快速地查阅Shodan网站的API文档。该文档很少，但是提供了创建客户端程序所需的一切。
 
+### 设计项目结构
+构建API客户端时，应对其进行结构设计，以使函数调用和逻辑独立。这可以在其他项目中作为单独的库来复用。这样就不会重复造轮子了。可复用性的架构会稍微改变项目的结构。以Shodan为例，项目的结构为：
+```shell script
+$ tree github.com/blackhat-go/bhg/ch-3/shodan github.com/blackhat-go/bhg/ch-3/shodan |---cmd
+| |---shodan
+| |---main.go |---shodan
+|---api.go |---host.go |---shodan.go
+```
 
+`main.go`文件定义包`main`，主要用作构建的API的使用者；这样的话，主要使用该文件于客户端交互。
 
+在`shodan`文件夹中的——`api.go, host.go, 和 shodan.go`——定义了包`shodan`，其包含了和`Shodan`通信所需要的类型和函数。这个包会是一个单独的库，可以导入的其他项目中使用。
