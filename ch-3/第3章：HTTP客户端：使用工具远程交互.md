@@ -217,3 +217,29 @@ $ tree github.com/blackhat-go/bhg/ch-3/shodan github.com/blackhat-go/bhg/ch-3/sh
 `main.go`文件定义包`main`，主要用作构建的API的使用者；这样的话，主要使用该文件于客户端交互。
 
 在`shodan`文件夹中的——`api.go, host.go, 和 shodan.go`——定义了包`shodan`，其包含了和`Shodan`通信所需要的类型和函数。这个包会是一个单独的库，可以导入的其他项目中使用。
+
+### 清理API调用
+
+当精读Shodan API文档时，您可能会注意到每个暴露的函数都需要发送您的API key。尽管可以肯定地将该值传递给所创建的函数，但该重复性的工作是乏味。类似的还有硬编码和操作URL (https://api.shodan.io/)。举例来说，如下所示定义了一个API函数，需要使用token和URL参数，这就有点不简洁：
+```go
+func APIInfo(token, url string) { --snip-- } 
+func HostSearch(token, url string) { --snip-- }
+```
+可以选择一种惯用的解决方案来替代，更少的代码和更高的可读性。为此，创建`shodan.go`文件，然后使用代码3-7中的代码：
+```go
+package shodan
+const BaseURL = "https://api.shodan.io"
+type Client struct { 
+    apiKey string
+}
+func New(apiKey string) *Client { return &Client{apiKey: apiKey}
+}
+```
+代码 3-7: 定义Shodan客户端 (https://github.com/blackhat-go/bhg/ch-3/shodan.go/)
+
+Shodan URL被定义为常量；这样，在函数中易于访问和复用。如果Shodan更改API的URL，只需要改动这一个地方就能改动整个代码库。接下来定义了`Client`结构体，保存请求API时使用的token。最后，定义了`New()`辅助函数，以API的token为参数，创建并返回已初始化了的Client实例。现在，无需将API代码创建为任意函数，而是将它们创建为Client的方法，这使就可以直接通过Client实例查询，而不必依赖过于冗长的函数参数。将稍后要讨论的API函数改为以下内容：
+```go
+func (s *Client) APIInfo() { --snip-- } 
+func (s *Client) HostSearch() { --snip-- }
+```
+因为这都是Client的方法，可以直接通过`s.apiKey`获得API key，通过`BaseURL`得到URL。调用这些方法的唯一前提条件是首先创建Client实例。通过`shodan.go`文件中`New()`辅助函数就可以了。
