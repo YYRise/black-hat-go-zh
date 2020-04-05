@@ -403,4 +403,48 @@ func (s *Client) HostSearch(q stringu) (*HostSearch, error) {
 
 对于要与之交互的每个 API 服务，重复定义相应的结构和实现函数。这里就不浪费纸张了，我们就跳过直接到最后一步：创建使用这些代码的客户端。
 
+### 创建客户端
+
+使用简单的方法创建客户端：将搜索词作为命令行参数，然后调用 APIInfo（） 和 HostSearch（） 方法，如代码 3-11 所示。
+```go
+func main() {
+    if len(os.Args) != 2 {
+        log.Fatalln("Usage: shodan searchterm") 
+    }
+    apiKey := os.Getenv("SHODAN_API_KEY")
+    s := shodan.New(apiKey)
+    info, err := s.APIInfo()w
+    if err != nil {
+        log.Panicln(err) 
+    }
+    fmt.Printf(
+        "Query Credits: %d\nScan Credits: %d\n\n", 
+        info.QueryCredits,
+        info.ScanCredits)
+    hostSearch, err := s.HostSearch(os.Args[1]) 
+    if err != nil {
+        log.Panicln(err) 
+    }
+    for _, host := range hostSearch.Matches { 
+        fmt.Printf("%18s%8d\n", host.IPString, host.Port)
+    } 
+}
+```
+代码 3-11: 使用 `shodan` 包 (https://github.com/blackhat-go/bhg/ch-3/shodan/cmd/shodan/main.go/)
+
+先从环境变量`SHODAN_API_KEY`中获得API 的key。然后用该值实例化 `Client` 结构体，命名为s，接下来调用 `APIInfo() `方法。调用 `HostSearch()`，使用命令行参数传递的搜索字符串。最后，遍历结果显示与查询字符串匹配的那些服务的IP和端口值。以下输出是搜索字符串tomcat的结果：
+```shell script
+$ SHODAN_API_KEY=YOUR-KEY go run main.go tomcat 
+Query Credits:  100
+Scan Credits:   100
+  185.23.138.141  8081 
+  218.103.124.239 8080 
+  123.59.14.169   8081 
+  177.6.80.213    8181 
+  142.165.84.160  10000
+--snip--
+```
+
+要向该项目中添加错误处理和数据验证，但这是使用新API提取和显示Shodan数据的一个很好的例子。现在
+有一个可以易扩展的代码库，方便地添加其他Shodan功能并测试。
 
