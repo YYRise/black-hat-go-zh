@@ -243,3 +243,164 @@ func (s *Client) APIInfo() { --snip-- }
 func (s *Client) HostSearch() { --snip-- }
 ```
 因为这都是Client的方法，可以直接通过`s.apiKey`获得API key，通过`BaseURL`得到URL。调用这些方法的唯一前提条件是首先创建Client实例。通过`shodan.go`文件中`New()`辅助函数就可以了。
+
+### 查询Shodan订阅
+
+现在可以开始和Shodan交互了。根据Shodan API文档，用于查询订阅计划信息的调用如下：
+```html
+https://api.shodan.io/api-info?key={YOUR_API_KEY}
+```
+
+返回的响应类似于下面的结构。显然，这基于计划详情和剩余的订阅支付有所不同。
+```json
+{
+  "query_credits": 56, 
+  "scan_credits": 0, 
+  "telnet": true, 
+  "plan": "edu", 
+  "https": true, 
+  "unlocked": true
+}
+```
+首先，在`api.go`中，定义能够将JSON解析到Go的结构。没有它，将无法处理或查询响应体。该例中命名为`APIInfo`：
+```go
+type APIInfo struct {
+    QueryCredits    int     `json:"query_credits"`
+    ScanCredits     int     `json:"scan_credits"`
+    Telnet          bool    `json:"telnet"` 
+    Plan            string  `json:"plan"`
+    HTTPS           bool    `json:"https"`
+    Unlocked        bool    `json:"unlocked"`
+}
+```
+Go的使结构体和JSON对应的功能棒极了。像第一章看到的那样，使用一些很棒的工具“自动”解析JSON——填充结构体中的字段。对于结构体暴露出的每一个字段，都可以用结构体标签明确地定义对应的JSON名字，这样能确保正确地映射和解析。
+
+接下来需要执行代码3-8中的函数，该函数使用HTTP GET方法向Shodan请求，然后将响应解析到对应的`APIInfo`结构体。
+```go
+func (s *Client) APIInfo() (*APIInfo, error) {
+    res, err := http.Get(fmt.Sprintf("%s/api-info?key=%s", BaseURL, s.apiKey))
+    if err != nil {
+        return nil, err 
+    }
+    defer res.Body.Close()
+    var ret APIInfo
+    if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
+        return nil, err 
+    }
+    return &ret, nil }
+```
+代码 3-8: 发送 HTTP GET 请求并解析响应 (https://github.com/blackhat-go/bhg/ch-3/shodan/shodan/api.go/)
+
+代码简短而精悍。先向/api-info发出HTTP GET请求。该URL由全局常量`BaseURL`和`s.apiKey`创建。然后将响应解析到`APIInfo`结构体中，最后返回给调用者。
+
+在编写使用这种新颖逻辑的代码之前，请构建第二个更有用的API调用——主机搜索——将其添加到`host.go`中。根据API文档的描述，请求和响应如下：
+```json
+https://api.shodan.io/shodan/host/search?key={YOUR_API_KEY}&query={query}&facets={facets} 
+{
+  "matches": [ 
+  {
+    "os": null,
+    "timestamp": "2014-01-15T05:49:56.283713", 
+    "isp": "Vivacom",
+    "asn": "AS8866",
+    "hostnames": [ ],
+    "location": {
+        "city": null, 
+        "region_code": null, 
+        "area_code": null, 
+        "longitude": 25, 
+        "country_code3": "BGR", 
+        "country_name": "Bulgaria", 
+        "postal_code": null, 
+        "dma_code": null, 
+        "country_code": "BG", 
+        "latitude": 43
+    },
+    "ip": 3579573318, 
+    "domains": [ ],
+    "org": "Vivacom",
+    "data": "@PJL INFO STATUS CODE=35078 DISPLAY="Power Saver" ONLINE=TRUE", 
+    "port": 9100,
+    "ip_str": "213.91.244.70"
+  },
+  --snip--
+  ], 
+  "facets": {
+    "org": [ 
+    {
+      "count": 286,
+      "value": "Korea Telecom" 
+    },
+    --snip--
+    ] 
+  },
+  "total": 12039 
+}
+```
+与刚实现的初始 API 调用相比这个复杂多了。该请求不仅需要多个参数，而且JSON响应还包含嵌套的数据和数组。下面的实现忽略了`facets`选型的数据，重点放在基于字符串的主机搜索的处理过程，以仅匹配响应体的元素。
+
+像之前做的那样，先创建处理响应体数据对应的Go的结构体；将代码3-9加到`host.go`文件中。
+```go
+type HostLocation struct{
+    City            string      `json:"city"` 
+    RegionCode      string      `json:"region_code"`
+    AreaCode        int         `json:"area_code"`
+    Longitude       float32     `json:"longitude"`
+    CountryCode3    string      `json:"country_code3"`
+    CountryName     string      `json:"country_name"`
+    PostalCode      string      `json:"postal_code"`
+    DMACode         int         `json:"dma_code"`
+    CountryCode     string      `json:"country_code"`
+    Latitude        float32     `json:"latitude"`     
+}
+
+type Host struct {
+    OS        string        `json:"os"` 
+    Timestamp string        `json:"timestamp"`
+    ISP       string        `json:"isp"` 
+    ASN       string        `json:"asn"`
+    Hostnames []string      `json:"hostnames"`
+    Location  HostLocation  `json:"location"`
+    IP        int64         `json:"ip"`
+    Domains   []string      `json:"domains"`
+    Org       string        `json:"org"`
+    Data      string        `json:"data"`
+    Port      int           `json:"port"`
+    IPString  string        `json:"ip_str"` 
+}
+
+type HostSearch struct {
+    Matches []Host `json:"matches"`
+}
+```
+代码 3-9: Host 搜索响应体数据类型 (https://github.com/blackhat-go/bhg/ch-3/shodan/shodan/host.go/)
+
+代码中定义了三种类型：  
+**HostSearch** 解析matches 数组   
+**Host** 单个matches对象  
+**HostLocation** host中的location元素 
+
+注意，没有定义所有的响应字段类型。Go优雅地处理了仅使用关心的JSON字段来定义结构。因此，这些代码解析JSON刚刚好，同时还能减少代码量。通过代码3-10中定义的函数来初始化并返回结构体，和代码3-8中的`APIInfo()`方法类似。
+```go
+func (s *Client) HostSearch(q stringu) (*HostSearch, error) { 
+    res, err := http.Get(
+        fmt.Sprintf("%s/shodan/host/search?key=%s&query=%s", BaseURL, s.apiKey, q), 
+    )
+    if err != nil { 
+        return nil, err
+    }
+    defer res.Body.Close()
+    var ret HostSearch
+    if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
+        return nil, err
+    }
+    return &ret, nil
+}
+```
+代码 3-10: 解析 host 搜索的响应头 (https://github.com/blackhat-go/bhg/ch-3/shodan/shodan/host.go/)
+
+流程逻辑也和`APIInfo()`方法类似，除了需要搜索字符串作为参数发送到`/shodan/host/search`端点，然后将响应体解析到`HostSearch`。
+
+对于要与之交互的每个 API 服务，重复定义相应的结构和实现函数。这里就不浪费纸张了，我们就跳过直接到最后一步：创建使用这些代码的客户端。
+
+
