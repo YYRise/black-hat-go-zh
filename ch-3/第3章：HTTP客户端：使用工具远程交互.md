@@ -471,5 +471,26 @@ $ export MSFPASS=s3cr3t
 ```
 现在Metasploit 和 RPC 服务运行起来了。
 
-鉴于开发和Metasploit使用的细节超出了本书的范围，
+鉴于开发和Metasploit使用的细节超出了本书的范围，假设通过欺骗已经危害了远程Windows系统，并利用Metasploit的Meterpreter进行高级的开发活动。在这里，专注于如何和Metasploit远程通信列出已建立的Meterpreter会话。如我们之前提到的，代码会有点复杂，因此我们只留下最核心的代码——足够以后按需去扩展了。
+
+和Shodan例子的流程一样：查看Metasploit的API，将项目设计成库，定义数据类型，实现客户端API函数，最后用该库测试。
+
+首先，在Rapid7官方网站(https://metasploit.help.rapid7.com/docs/rpc-api/)上查看Metasploit的API的开发文档。公开的功能很多，通过本地交互远程执行任何操作。不像Shodan使用JSON，Metasploit使用压缩高效的二进制格式的MessagePack通信。因为Go中没有标准的MessagePack 包，因此使用功能齐全的公开版本。通过执行下面的命令安装：
+```shell script
+$ go get gopkg.in/vmihailenco/msgpack.v2
+```
+
+代码中将要实现的称为`msgpack`。不用担心太多的MessagePack细节。很快就会知道构建客户端只需要很少的内容。Go杰出的原因之一是隐藏了很多细节，让开发者专注于业务逻辑。需要了解的是定义合适的类型正确解析MessagePack。此外，用另外的格式初始化编码和解码的代码，相 JSON 和 XML。
+
+接下来，创建目录结构。本例只有两个Go文件：
+```shell script
+$ tree github.com/blackhat-go/bhg/ch-3/metasploit-minimal 
+github.com/blackhat-go/bhg/ch-3/metasploit-minimal 
+|---client
+| |---main.go
+|---rpc |---msf.go
+```
+
+`msf.go`文件是rpc包，`client/main.go`执行测试创建的库。
+
 
