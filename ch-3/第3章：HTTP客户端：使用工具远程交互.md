@@ -493,4 +493,58 @@ github.com/blackhat-go/bhg/ch-3/metasploit-minimal
 
 `msf.go`文件是rpc包，`client/main.go`执行测试创建的库。
 
+### 定义对象
+现在需要定义用的对象了。为了简洁起见，实现调用RPC代码获取当前的Meterpreter回话——即Meterpreter开发文档中的`session.list`文件。请求格式定义如下：
+```json
+[ "session.list", "token" ]
+```
+最少的内容；期望接收要实现的方法的名称和`token`。`token`在这里占位用。如果通读过文档的话，这是成功登录到 RPC 服务器后生成的认证token。Metasploit 返回的`session.list`格式如下：
+```
+{
+"1" => {
+    'type' => "shell",
+    "tunnel_local" => "192.168.35.149:44444", "tunnel_peer" => "192.168.35.149:43886", "via_exploit" => "exploit/multi/handler", "via_payload" => "payload/windows/shell_reverse_tcp", "desc" => "Command shell",
+    "info" => "",
+    "workspace" => "Project1",
+    "target_host" => "",
+    "username" => "root",
+    "uuid" => "hjahs9kw",
+    "exploit_uuid" => "gcprpj2a",
+    "routes" => [ ]
+    }
+}
+```
+
+返回map类型的响应，key为Meterpreter的session标识符，value是session的细节。
+
+在Go中创建相应的请求和响应数据类型。代码 3-13 定义了`sessionListReq`和 `SessionListRes`.
+```go
+type sessionListReq struct {
+	_msgpack struct{} `msgpack:",asArray"`
+	Method   string
+	Token    string
+}
+
+type SessionListRes struct {
+	ID          uint32 `msgpack:",omitempty"`
+	Type        string `msgpack:"type"`
+	TunnelLocal string `msgpack:"tunnel_local"`
+	TunnelPeer  string `msgpack:"tunnel_peer"`
+	ViaExploit  string `msgpack:"via_exploit"`
+	ViaPayload  string `msgpack:"via_payload"`
+	Description string `msgpack:"desc"`
+	Info        string `msgpack:"info"`
+	Workspace   string `msgpack:"workspace"`
+	SessionHost string `msgpack:"session_host"`
+	SessionPort int    `msgpack:"session_port"`
+	Username    string `msgpack:"username"`
+	UUID        string `msgpack:"uuid"`
+	ExploitUUID string `msgpack:"exploit_uuid"`
+}
+```
+代码 3-13: 定义Metasploit的session请求和响应 (https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
+
+使用`sessionListReq`将结构化数据序列化成和 Metasploit RPC 服务器一致的 MessagePack 格式——特别需要方法名字和token。注意，这里的字段没有任何描述符。这些数据通过数组而不是map传递，因此不是`key/value`格式的数据，RPC也需要的是数组中的值。这也就是为什么省略了这些属性的注释——不需要定义key的名字。然而，结构体编码时会默认使用属性的名字作为key编码成map。要避之并强制编码成数组，添加名为`_msgpack`的特殊字段并使用`asArray`描述符，明确地指示将数据编解码为数组。
+
+`SessionListRes`类型将结构体属性和响应体字段一对一对应。像上例中响应体，数据本质上是嵌套的map。外层map是session详情的标识，内层map是session详情键/值对。不像请求体那样，响应体并不是构建成数组的结构，而是结构体的每个属性都使用描述符显式命名，并和 Metasploit的数据映射。代码将session标识符作为结构体的属性。然而，标识符实际的数据是键值，这将以稍微不同的方式填充，因此使用`omitempty`描述符，以使数据具有可选性，以便不影响编码或解码。这种平级的数据就没必要使用嵌套map了。
 
