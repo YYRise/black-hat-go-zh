@@ -548,3 +548,30 @@ type SessionListRes struct {
 
 `SessionListRes`类型将结构体属性和响应体字段一对一对应。像上例中响应体，数据本质上是嵌套的map。外层map是session详情的标识，内层map是session详情键/值对。不像请求体那样，响应体并不是构建成数组的结构，而是结构体的每个属性都使用描述符显式命名，并和 Metasploit的数据映射。代码将session标识符作为结构体的属性。然而，标识符实际的数据是键值，这将以稍微不同的方式填充，因此使用`omitempty`描述符，以使数据具有可选性，以便不影响编码或解码。这种平级的数据就没必要使用嵌套map了。
 
+### 获取有效Token
+现在还有一件事情未解决。那就是获取发送请求需要的`token`。为此，需要发送登录请求到`auth.login()`这个API，如下所示：
+```shell script
+["auth.login", "username", "password"]
+```
+使用初始化时在Metasploit加载`msfrpc`模块时的用户名和密码替换`username`和`password`（也就是将其加入到环境变量中了）。假如认证成功的话，服务器响应如下，其含有为接下来请求所用的认证token。
+```shell script
+{ "result" => "success", "token" => "a1a1a1a1a1a1a1a1" }
+```
+认证失败的响应如下：
+```shell script
+{
+    "error" => true,
+    "error_class" => "Msf::RPC::Exception",
+    "error_message" => "Invalid User ID or Password" 
+}
+```
+另外，我们还创建通过注销来使token过期的功能。该请求需要方法名，认证的token，第三个为可选参数，因为此处第三个参数不是必需的，就先忽略了：
+```shell script
+[ "auth.logout", "token", "logoutToken"]
+```
+成功的响应像下面这样：
+```shell script
+{ "result" => "success" }
+```
+
+
