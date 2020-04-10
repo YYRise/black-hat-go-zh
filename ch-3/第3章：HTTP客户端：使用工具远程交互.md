@@ -607,3 +607,30 @@ type logoutRes struct {
 代码 3-14: 定义登录和登出 Metasploit 的类型 (https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
 
 值得注意的是，Go动态地序列化登录响应，只填充当前的字段，这意味着可以使用同一个结构格式来表示登录成功和失败。
+
+### 创建配置结构体和RPC方法
+代码3-15中，定义了相关类型并使用，创建必要的方法向Metasploit发送RPC命令。和Shodan的例子一样，可以定义能保存相关配置和认证信息的任意类型。这样，就不必直接反复传递`host`, `port`和认证`token`这些通用的数据。相反，定义成类型和该类型的方法使数据不公开使用。
+```go
+type Metasploit struct {
+	host  string
+	user  string
+	pass  string
+	token string
+}
+func New(host, user, pass string) (*Metasploit, error) {
+	msf := &Metasploit{
+		host: host,
+		user: user,
+		pass: pass,
+	}
+
+	if err := msf.Login(); err != nil {
+		return nil, err
+	}
+
+	return msf, nil
+}
+```
+代码 3-15: 定义Metasploit 客户端 (https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
+
+现在有了结构体，为了方便起见，还有一个初始化并返回新实例的New()的函数。
