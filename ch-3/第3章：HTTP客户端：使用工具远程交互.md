@@ -574,4 +574,36 @@ type SessionListRes struct {
 { "result" => "success" }
 ```
 
+### 定义请求和响应方法
 
+正如为`session.list()`方法的请求和响应构造的Go类型一样，也需要对`auth.login()` 和 `auth.logout()`进行相同的操作（见代码 3-14）。和之前一样，使用描述符强制将请求序列化为数组，并将响应处理为map。
+```go
+type loginReq struct {
+	_msgpack struct{} `msgpack:",asArray"`
+	Method   string
+	Username string
+	Password string
+}
+
+type loginRes struct {
+	Result       string `msgpack:"result"`
+	Token        string `msgpack:"token"`
+	Error        bool   `msgpack:"error"`
+	ErrorClass   string `msgpack:"error_class"`
+	ErrorMessage string `msgpack:"error_message"`
+}
+
+type logoutReq struct {
+	_msgpack    struct{} `msgpack:",asArray"`
+	Method      string
+	Token       string
+	LogoutToken string
+}
+
+type logoutRes struct {
+	Result string `msgpack:"result"`
+}
+```
+代码 3-14: 定义登录和登出 Metasploit 的类型 (https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
+
+值得注意的是，Go动态地序列化登录响应，只填充当前的字段，这意味着可以使用同一个结构格式来表示登录成功和失败。
