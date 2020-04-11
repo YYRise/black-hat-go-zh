@@ -634,3 +634,100 @@ func New(host, user, pass string) (*Metasploit, error) {
 代码 3-15: 定义Metasploit 客户端 (https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
 
 现在有了结构体，为了方便起见，还有一个初始化并返回新实例的New()的函数。
+
+### 执行远程调用
+
+给`Metasploit`添加方法来执行远程调用。代码3-16中，为减少重复代码添加序列化，反序列化，HTTP通信逻辑的相关方法。这样就不必在每个RPC函数中添加重复的逻辑代码了。
+```go
+func (msf *Metasploit) send(req interface{}, res interface{}) error {
+	buf := new(bytes.Buffer)
+	msgpack.NewEncoder(buf).Encode(req)
+	dest := fmt.Sprintf("http://%s/api", msf.host)
+	r, err := http.Post(dest, "binary/message-pack", buf)
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
+
+	if err := msgpack.NewDecoder(r.Body).Decode(&res); err != nil {
+		return err
+	}
+
+	return nil
+}
+```
+代码 3-16: 复用序列化和反序列化的普通`send()`方法 (https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
+
+`send()`方法接收`interface{}`类型的请求和响应参数。使用`interface{}`可以将任意的请求结构体传递给函数，接下来序列化并发送给服务器。使用`res interface{} `读取解码后的HTTP响应体数据存储在内存中，而不是直接返回该响应体。
+
+下一步使用`msgpack`包编码请求。该逻辑与其他标准的结构化数据类型相似:先使用`NewEncoder()`创建编码器，然后调用`Encode()`方法。这样请求结构体就会被编码到`buf`变量中。编码后，使用`Metasploit`接收器`msf`中的数据构建URL，显示地设置内容类型为`binary/message-pack`，和设置包体为序列化后的数据。最后，解码响应体。如前所述，解码后的数据被写入到传入到方法中的响应接口的内存位置。这种灵活，可复用的方法不需要明确地知道请求和响应结构体类型就能编码和解码。
+
+代码 3-17，是逻辑的精髓所在。
+```go
+func (msf *Metasploit) Login() error {
+	ctx := &loginReq{
+		Method:   "auth.login",
+		Username: msf.user,
+		Password: msf.pass,
+	}
+	var res loginRes
+	if err := msf.send(ctx, &res); err != nil {
+		return err
+	}
+	msf.token = res.Token
+	return nil
+}
+
+func (msf *Metasploit) Logout() error {
+	ctx := &logoutReq{
+		Method:      "auth.logout",
+		Token:       msf.token,
+		LogoutToken: msf.token,
+	}
+	var res logoutRes
+	if err := msf.send(ctx, &res); err != nil {
+		return err
+	}
+	msf.token = ""
+	return nil
+}
+
+func (msf *Metasploit) SessionList() (map[uint32]SessionListRes, error) {
+	req := &sessionListReq{Method: "session.list", Token: msf.token}
+	res := make(map[uint32]SessionListRes)
+	if err := msf.send(req, &res); err != nil {
+		return nil, err
+	}
+
+	for id, session := range res {
+		session.ID = id
+		res[id] = session
+	}
+	return res, nil
+}
+```
+代码 3-17: Metasploit API 调用实现 (https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
+
+定义了三个方法`Login()` , `Logout()`, 和 `SessionList()`。 每个方法使用相同的通用流程：创建并初始化请求结构体，创建响应结构体，调用辅助函数发送请求并接收解码后的响应体。`Login()`和`Logout()`方法操作`token`属性。方法中逻辑上唯一显著的差异在SessionList()方法中，该方法中定义了`map[uint32]SessionListRes`类型的响应`res`，然后再遍历`res`，赋值结构体的`ID`属性，而后保存在map中。
+
+`session.list()`这个RPC函数需要有效的认证token，也就是在调用`SessionList()`前就要登录成功。代码 3-18使用`Metasploit`类型的的`msf`来访问token，此时还是无效的值——是个空字符串。由于这不是功能齐全的代码，只能在`SessionList`方法中显示调用`Login()`方法，但是对于实现另外的认证方法，必须检查存在有效的认证token，且显示调用`Login()`。这不是好的编码，因为花费大量的时间写重复的代码，这里只是作为引导。
+
+作为引导已经实现了`New()`函数，因此要添加认证，新实现的函数如下（见代码3-18）。
+```go
+func New(host, user, pass string) (*Metasploit, error) {
+	msf := &Metasploit{
+		host: host,
+		user: user,
+		pass: pass,
+	}
+
+	if err := msf.Login(); err != nil {
+		return nil, err
+	}
+
+	return msf, nil
+}
+```
+代码 3-18: 带有登录Metasploit的初始化客户端(https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
+
+修补后的代码带有错误返回。用来提醒认证可能会失败。同样地添加了显示调用 `Login()`方法。只要使用`New()`实例化`Metasploit`对象，通过调用认证方法就能访问有效的认证token。
