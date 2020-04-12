@@ -791,4 +791,59 @@ Sessions:
 
 应用程序将任意信息保存在磁盘的文件中。有时候会含有地理坐标，应用版本，操作系统信息，用户名。更好的是，搜索引擎有高级查询过滤器，能检索系统内特定文件。本章剩余部分主要来构建`scrapes`工具——或者是官方称为`indexes`——Bing搜索的结果来检索目标组织的Microsoft Office文档，然后依次提取相关的元数据。
 
+### 建立环境和规划
+
+在深入讨论细节之前，我们将先陈述下目标。首先，只关注以`xlsx, docx, pptx`等为扩展名的Open XML文档。尽管的确含有合法的Office数据类型，但二进制格式使它们的复杂性呈指数级增长，增加代码复杂度，减少可读性。对PDF文件来说也是一样的。此外，开发的代码不会处理Bing分页，而是只解析搜索结果的开始页面。我们鼓励您将其构建到工作示例中，并探索Open XML之外的文件类型。
+
+为什么只使用Bing搜索API来构建，而不是抓取HTML？因为已经学会了如何构建客户端来和结构化的API交互。有一些用于抓取HTML页面的用例，特别是在不存在API的情况下。顺便利用这个机会介绍一种提取数据的新方法，而不是重复已经学会的内容。将使用优秀的包，`goquery`，模仿`jQuery`的功能，jQuery是一个JavaScript库，直观的语法来遍历HTML文档并在其中选择数据。从安装`goquery`开始：
+```shell script
+$ go get github.com/PuerkitoBio/goquery
+```
+
+幸运的是，这是完成开发所需的惟一需要的软件。使用标准的Go包就能和Open XML 文件交互。这些文件尽管后缀都属于ZIP归档文件，提取后都含有XML文件。元数据存储在归档文件`docProps`目录中的两个文件中:
+```shell script
+$ unzip test.xlsx $ tree
+--snip-- 
+|---docProps
+| |---app.xml
+| |---core.xml 
+--snip—
+```
+`core.xml `文件包含作者信息和修改细节。结构如下：
+```xml
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata /core-properties"
+xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<dc:creator>Dan Kottmann</dc:creator>u
+<cp:lastModifiedBy>Dan Kottmann</cp:lastModifiedBy>v
+<dcterms:created xsi:type="dcterms:W3CDTF">2016-12-06T18:24:42Z</dcterms:created> <dcterms:modified xsi:type="dcterms:W3CDTF">2016-12-06T18:25:32Z</dcterms:modified>
+</cp:coreProperties>
+```
+`creator`和`lastModifiedBy`元素是主要关系的。这些字段含有员工或用户名，可用在社交工程或猜密码活动中。`app.xml`中有创建Open XML 文档的应用类型和版本的详细信息。结构如下：
+```xml
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"> <Application>Microsoft Excel</Application>u
+<DocSecurity>0</DocSecurity>
+<ScaleCrop>false</ScaleCrop>
+<HeadingPairs>
+<vt:vector size="2" baseType="variant">
+            <vt:variant>
+                <vt:lpstr>Worksheets</vt:lpstr>
+            </vt:variant>
+            <vt:variant>
+                <vt:i4>1</vt:i4>
+            </vt:variant>
+        </vt:vector>
+    </HeadingPairs>
+    <TitlesOfParts>
+<vt:vector size="1" baseType="lpstr"> <vt:lpstr>Sheet1</vt:lpstr>
+        </vt:vector>
+    </TitlesOfParts>
+<Company>ACME</Company>v <LinksUpToDate>false</LinksUpToDate> <SharedDoc>false</SharedDoc> <HyperlinksChanged>false</HyperlinksChanged> <AppVersion>15.0300</AppVersion>w
+</Properties>
+```
+主要关注的元素很少：`Application`, `Company`, 和 `AppVersion`。版本本身和Office版本名称没有明显的联系，如Office 2013, Office 2016,等。但是在该字段和更可读、更常见的替代之间确实存在逻辑映射。编写代码来维护这个映射。
+
+
 
