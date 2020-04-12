@@ -845,5 +845,45 @@ xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
 ```
 主要关注的元素很少：`Application`, `Company`, 和 `AppVersion`。版本本身和Office版本名称没有明显的联系，如Office 2013, Office 2016,等。但是在该字段和更可读、更常见的替代之间确实存在逻辑映射。编写代码来维护这个映射。
 
+### 定义元数据包
 
+代码3-20，在新包`metadata`中定义和这些XML数据集一致的Go类型，代码在`openxml.go`文件中，即要解析的每个 XML 文件的一种类型。然后添加数据映射和便利函数，用于确定与`AppVersion`对应的可识别的Office版本。
+```go
+type OfficeCoreProperty struct {
+	XMLName        xml.Name `xml:"coreProperties"`
+	Creator        string   `xml:"creator"`
+	LastModifiedBy string   `xml:"lastModifiedBy"`
+}
 
+type OfficeAppProperty struct {
+	XMLName     xml.Name `xml:"Properties"`
+	Application string   `xml:"Application"`
+	Company     string   `xml:"Company"`
+	Version     string   `xml:"AppVersion"`
+}
+
+var OfficeVersions = map[string]string{
+	"16": "2016",
+	"15": "2013",
+	"14": "2010",
+	"12": "2007",
+	"11": "2003",
+}
+
+func (a *OfficeAppProperty) GetMajorVersion() string {
+	tokens := strings.Split(a.Version, ".")
+
+	if len(tokens) < 2 {
+		return "Unknown"
+	}
+	v, ok := OfficeVersions[tokens[0]]
+	if !ok {
+		return "Unknown"
+	}
+	return v
+}
+```
+代码 3-20: 定义Open XML 类型和版本映射 (https://github.com/blackhat-go/bhg/ch-3/bing-metadata/metadata/openxml.go/)
+
+定义 `OfficeCoreProperty` 和 `OfficeAppProperty` 类型后，再定义`map`类型的`OfficeVersions`，用于维护主版本号和可识别发布年份间的关系。为使用该map，在 `OfficeAppProperty`类型上定义了`GetMajorVersion()`方法。该方法分割XML数据的`AppVersion`值来检索主版本号，然后使用该值在`OfficeVersions`检索出发布年份。
+ 
