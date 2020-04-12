@@ -885,5 +885,46 @@ func (a *OfficeAppProperty) GetMajorVersion() string {
 ```
 代码 3-20: 定义Open XML 类型和版本映射 (https://github.com/blackhat-go/bhg/ch-3/bing-metadata/metadata/openxml.go/)
 
-定义 `OfficeCoreProperty` 和 `OfficeAppProperty` 类型后，再定义`map`类型的`OfficeVersions`，用于维护主版本号和可识别发布年份间的关系。为使用该map，在 `OfficeAppProperty`类型上定义了`GetMajorVersion()`方法。该方法分割XML数据的`AppVersion`值来检索主版本号，然后使用该值在`OfficeVersions`检索出发布年份。
+定义 `OfficeCoreProperty` 和 `OfficeAppProperty` 类型后，再定义`map`类型的`OfficeVersions`，用于维护主版本号和可识别发布年份间的关系。为使用该map，在 `OfficeAppProperty`类型上定义了`GetMajorVersion()`方法。该方法分割XML数据的`AppVersion`值来检索主版本号，然后使用该值在`OfficeVersions`检索出发布的年份。
  
+ ### 将数据映射到结构体
+ 现在已经构建了处理和检查关注的XML数据的逻辑和类型，是时候写代码来读取文件并将内容赋值给结构体了。为此，定义`NewProperties()`和`process()`函数，如代码 3-21。
+ ```go
+func process(f *zip.File, prop interface{}) error {
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	if err := xml.NewDecoder(rc).Decode(&prop); err != nil {
+		return err
+	}
+	return nil
+}
+
+func NewProperties(r *zip.Reader) (*OfficeCoreProperty, *OfficeAppProperty, error) {
+	var coreProps OfficeCoreProperty
+	var appProps OfficeAppProperty
+
+	for _, f := range r.File {
+		switch f.Name {
+		case "docProps/core.xml":
+			if err := process(f, &coreProps); err != nil {
+				return nil, nil, err
+			}
+		case "docProps/app.xml":
+			if err := process(f, &appProps); err != nil {
+				return nil, nil, err
+			}
+		default:
+			continue
+		}
+	}
+	return &coreProps, &appProps, nil
+}
+```
+代码 3-21: 处理开放的XML归档文件和嵌入的XML文档 (https://github.com/blackhat-go/bhg/ch-3/bing-metadata/metadata/openxml.go/)
+
+`NewProperties()`函数接收`*zip.Render`，表示ZIP归档文档的`io.Reader`。使用`zip.Reader`实例，遍历归档中的所有文件，检查文件名。如果文件名匹配两个属性文件名中的一个，则调用`process()`函数，实参为文件和希望解析成的任意结构类型——`OfficeCoreProperty`或`OfficeAppProperty`。
+
+`process()`接收两个参数：`*zip.File`和`interface{}`。和之前开发的Metasploit相似，这段代码也是用了通用的`interface{}`类型，这样能把文件内容赋值给任何任意的数据类型。这增加了代码重用，因为在`process()`函数中没有特定于类型的内容。函数中的代码读取文件内容，然后将XML数据解码到结构体中。
