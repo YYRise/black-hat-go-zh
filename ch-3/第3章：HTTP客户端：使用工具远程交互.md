@@ -731,3 +731,58 @@ func New(host, user, pass string) (*Metasploit, error) {
 代码 3-18: 带有登录Metasploit的初始化客户端(https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)
 
 修补后的代码带有错误返回。用来提醒认证可能会失败。同样地添加了显示调用 `Login()`方法。只要使用`New()`实例化`Metasploit`对象，通过调用认证方法就能访问有效的认证token。
+
+### 创建实用程序
+
+在本例的最后，最后一项工作是使用实现的新库创建实用的程序。将3-19中的代码添加的`client/main.go`中并允许，看看奇迹发生了。
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/bhg/ch-3/metasploit-minimal/rpc"
+)
+
+func main() {
+	host := os.Getenv("MSFHOST")
+	pass := os.Getenv("MSFPASS")
+	user := "msf"
+
+	if host == "" || pass == "" {
+		log.Fatalln("Missing required environment variable MSFHOST or MSFPASS")
+	}
+
+	msf, err := rpc.New(host, user, pass)
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer msf.Logout()
+
+	sessions, err := msf.SessionList()
+	if err != nil {
+		log.Panicln(err)
+	}
+	fmt.Println("Sessions:")
+	for _, session := range sessions {
+		fmt.Printf("%5d  %s\n", session.ID, session.Info)
+	}
+}
+
+```
+Listing 3-19: 使用 msfrpc 包 (https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/client/main.go/)
+
+首先，启动RPC和初始化Metasploit实例。记住，只是更新了这个函数来执行在初始化时认证。下一步，通过defer调用`Logout()`方法确保`main`退出时正确执行清理工作。然后调用`SessionList()`方法，再遍历响应体列出有效的Meterpreter session。
+
+通常调用其他API需要很多代码，但幸运的是，现在工作量应该会大大减少，因为只需定义请求和响应类型并构建库方法来发出远程调用。下面是直接从我们的客户端工具生成的输出示例，显示了一个已建立的Meterpreter session:
+```shell script
+$ go run main.go 
+Sessions:
+  1 WIN-HOME\jsmith @ WIN-HOME
+```
+
+好了。已经成功的创建了库和客户端程序来与远程的Metasploit实例交互，并获取到了Meterpreter session。接下来，继续探索抓取搜索引擎的响应和解析文本。
+
+
