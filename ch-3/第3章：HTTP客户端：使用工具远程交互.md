@@ -2,12 +2,12 @@
 
 ## 摘要
 在第2章中，您学习了如何用TCP创建可用的客户端和服务器。本章是探讨 OSI 模型较高层上的各种协议的第一章。
-基于网络中的广泛性，~~其隶属关系宽松的出口控制(todo)~~，一般的灵活性，先从HTTP开始。
+基于网络中的广泛性，宽松的出口控制联系，一般的灵活性，就先从HTTP开始。
 
 本章节专注于客户端。首先介绍构建和自定义HTTP请求并接收其响应的基础知识。然后，学习如何解析结构化的响应数据，以便客户可以访问数据以确定可行或相关数据。最后，通过构建与各种安全工具和资源进行交互的HTTP
 客户端来学习如何应用这些基础知识。开发的客户端将查询和使用 Shodan，Bing 和 Metasploit 的 API ，并以类似于元数据搜索工具FOCA的方式搜索和解析文档元数据
 
-## Go中HTTP原理
+## Go中HTTP基础
 
 尽管没必要全面了解HTTP，但是开始时最好知道一些。
 
@@ -953,7 +953,7 @@ site:nytimes.com && filetype:docx && instreamset:(url title):docx
 
 现在知道了URL和参数格式，可以查看HTML响应体，但是首先需要确定Document Object Model(DOM)文档链接的位置。可以通过直接查看源代码，或者限制猜想，只使用浏览器的开发者工具。下图是所需要的HREF的完整HTML元素的路径。像图3-1那样，使用元素检查器快速地选择连接来查看其完整的路径。
 
-<div align=center><img width = '640' height ='488' src ="https://github.com/YYRise/black-hat-go/raw/dev/ch-3/images/3-1.png"/></div>
+<div align=center><img width = '640' height ='488' src ="https://github.com/YYRise/black-hat-go/raw/dev/ch-3/images/3-1.jpg"/></div>
 图3-1：浏览器开发者工具显示完整的元素路径
 
 有了该路径信息，就能使用`goquery`系统地提取和HTML路径匹配的数据元素。闲话少说！代码3-22集成在一起了：检索，抓取，解析，提取。将代码保存到`main.go`中。
