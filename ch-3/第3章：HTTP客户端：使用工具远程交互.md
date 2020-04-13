@@ -928,3 +928,112 @@ func NewProperties(r *zip.Reader) (*OfficeCoreProperty, *OfficeAppProperty, erro
 `NewProperties()`函数接收`*zip.Render`，表示ZIP归档文档的`io.Reader`。使用`zip.Reader`实例，遍历归档中的所有文件，检查文件名。如果文件名匹配两个属性文件名中的一个，则调用`process()`函数，实参为文件和希望解析成的任意结构类型——`OfficeCoreProperty`或`OfficeAppProperty`。
 
 `process()`接收两个参数：`*zip.File`和`interface{}`。和之前开发的Metasploit相似，这段代码也是用了通用的`interface{}`类型，这样能把文件内容赋值给任何任意的数据类型。这增加了代码重用，因为在`process()`函数中没有特定于类型的内容。函数中的代码读取文件内容，然后将XML数据解码到结构体中。
+
+### 用Bing搜索和接收文件
+现在已经有了打开、读取、解析和提取Office Open XML文档所需的所有代码，并且也了解用该文件能做什么。现在应该弄明白使用Bing如何搜索和检索文件。以下是你应该遵循的行动规划:
+1. 向Bing提交一个搜索请求，使用适当的过滤器来检索目标结果。
+2. 获取HTML响应，提取HREF (link)数据来获得文档的直接url。
+3. 直接向每个文档的URL提交HTTP请求。
+4. 解析响应体创建`zip.Reader`。
+5. 将`zip.Reader`传递给已开发的提取元数据的代码。
+
+以下各节按顺序讨论这些步骤。
+
+业务的第一步是构建一个搜索查询模板。非常像Google，Bing包含高级查询参数用于在大量的变量中过滤搜索结果。大多数过滤器都是以`filter_type: value`格式提交的。无需解释所有的过滤类型，重点放在有助于实现目标的方面。下面列出了需要的三种类型。注意，也可以使用另外的过滤器，但是在撰写本文时，它们的行为有些不可预测。
+- **site** 用于过滤特定域的结果
+- **filetype** 用于根据资源文件类型筛选结果
+- **instreamset** 用于过滤只包含某些文件扩展名的结果
+
+从`nytimes.com`查询并保存为`docx`文件的示例查询如下:
+```shell script
+site:nytimes.com && filetype:docx && instreamset:(url title):docx
+```
+
+提交查询后，在浏览器中查看结果的URL。类似于图3-1。后面可能会出现其他参数，但是对于本例来说是无关紧要的，所以可以忽略它们。
+
+现在知道了URL和参数格式，可以查看HTML响应体，但是首先需要确定Document Object Model(DOM)文档链接的位置。可以通过直接查看源代码，或者限制猜想，只使用浏览器的开发者工具。下图是所需要的HREF的完整HTML元素的路径。像图3-1那样，使用元素检查器快速地选择连接来查看其完整的路径。
+
+<div align=center><img width = '640' height ='488' src ="https://github.com/YYRise/black-hat-go/raw/dev/ch-3/images/3-1.png"/></div>
+图3-1：浏览器开发者工具显示完整的元素路径
+
+有了该路径信息，就能使用`goquery`系统地提取和HTML路径匹配的数据元素。闲话少说！代码3-22集成在一起了：检索，抓取，解析，提取。将代码保存到`main.go`中。
+```go
+func handler(i int, s *goquery.Selection) {
+	url, ok := s.Find("a").Attr("href")
+	if !ok {
+		return
+	}
+
+	fmt.Printf("%d: %s\n", i, url)
+	res, err := http.Get(url)
+	if err != nil {
+		return
+	}
+
+	buf, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+
+	r, err := zip.NewReader(bytes.NewReader(buf), int64(len(buf)))
+	if err != nil {
+		return
+	}
+
+	cp, ap, err := metadata.NewProperties(r)
+	if err != nil {
+		return
+	}
+
+	log.Printf(
+		"%21s %s - %s %s\n",
+		cp.Creator,
+		cp.LastModifiedBy,
+		ap.Application,
+		ap.GetMajorVersion())
+}
+
+func main() {
+	if len(os.Args) != 3 {
+		log.Fatalln("Missing required argument. Usage: main.go <domain> <ext>")
+	}
+	domain := os.Args[1]
+	filetype := os.Args[2]
+
+	q := fmt.Sprintf(
+		"site:%s && filetype:%s && instreamset:(url title):%s",
+		domain,
+		filetype,
+		filetype)
+	search := fmt.Sprintf("http://www.bing.com/search?q=%s", url.QueryEscape(q))
+	doc, err := goquery.NewDocument(search)
+	if err != nil {
+		log.Panicln(err)
+	}
+
+	s := "html body div#b_content ol#b_results li.b_algo div.b_title h2"
+	doc.Find(s).Each(handler)
+}
+```
+代码 3-22: 抓取 Bing 结果并解析文档元数据 (https://github.com/blackhat-go/bhg/ch-3/bing-metadata/client/main.go/)
+
+创建了两个函数。第一个`handler()`，接受`goquery.Selection`实例（在本例中，使用锚HTML元素填充）然后查找并提取`href`属性。这个属性包含直接链接到使用Bing搜索返回的文档。然后代码使用该URL发送GET请求检索该文档。假设没有错误发生的话，就能读取响应体并创建`zip.Reader`。回想下之前在`metadata`包中创建的`NewProperties()`函数，参数为`zip.Reader`。现在有了合适的数据类型，传给该函数，其属性被文件中的数据填充，然后在屏幕上输出。
+
+`main()`函数启动并控制整个流程；通过命令行参数传递域名和文件类型。然后使用输入的数据构建了带有合适过滤条件的Bing查询。过滤字符串被编码并用于构建完整的Bing搜索URL。使用`goquery.NewDocument()`函数发送搜索查询，该函数使用HTTP GET请求并返回`goquery`易读的HTML响应文档。该文档能够使用`goquery`检索。最后，使用HTML元素选择器字符串来查找和迭代匹配的HTML元素，该字符串由浏览器开发者工具标识。对于每个匹配的元素，调用`handler()`函数。
+
+运行代码产生的输出示例类似如下：
+```shell script
+
+$ go run main.go nytimes.com docx
+0: http://graphics8.nytimes.com/packages/pdf/2012NAIHSAnnualHIVReport041713.docx 2020/12/21 11:53:50 Jonathan V. Iralu Dan Frosch - Microsoft Macintosh Word 2010 
+1: http://www.nytimes.com/packages/pdf/business/Announcement.docx
+2020/12/21 11:53:51 agouser agouser - Microsoft Office Outlook 2007
+2: http://www.nytimes.com/packages/pdf/business/DOCXIndictment.docx
+2020/12/21 11:53:51 AGO Gonder, Nanci - Microsoft Office Word 2007 
+3: http://www.nytimes.com/packages/pdf/business/BrownIndictment.docx
+2020/12/21 11:53:51 AGO Gonder, Nanci - Microsoft Office Word 2007 
+4: http://graphics8.nytimes.com/packages/pdf/health/Introduction.docx
+2020/12/21 11:53:51 Oberg, Amanda M Karen Barrow - Microsoft Macintosh Word 2010
+```
+现在，可以针对特定的域名从所有Open XML文件中搜索并提取文档元数据。我鼓励您对这个示例进行扩展，能操纵多个Bing搜索结果的逻辑，处理除Open XML外的其他文件类型，提高代码能并发下载支持的文件。
