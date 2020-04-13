@@ -1037,3 +1037,7 @@ $ go run main.go nytimes.com docx
 2020/12/21 11:53:51 Oberg, Amanda M Karen Barrow - Microsoft Macintosh Word 2010
 ```
 现在，可以针对特定的域名从所有Open XML文件中搜索并提取文档元数据。我鼓励您对这个示例进行扩展，能操纵多个Bing搜索结果的逻辑，处理除Open XML外的其他文件类型，提高代码能并发下载支持的文件。
+
+## 总结
+
+本章介绍了Go中的基本的HTTP概念，并用其创建和远程API交互的可用工具，及抓取任意的HTML数据。在下一章，通过创建服务器而非客户端来继续学习HTTP专题。
