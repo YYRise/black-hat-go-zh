@@ -99,4 +99,50 @@ $ curl http://localhost:8000/d
 
 如期运行；程序对URL含`/a`路径的返回`Executing /a`，对不存在的路径返回`404 Not Found`响应。这是一个简单的例子。第三方路由会有更复杂的逻辑。但这应该能让你对它们的工作原理有一个基本的了解。
 
+### 构建简单的中间件
 
+现在来构建中间件，是一种执行所有传入的请求的包装，而不管目标函数是什么。代码4-3的例子中，将创建一个显示请求处理开始和结束时间的logger。
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"time"
+)
+
+type logger struct {
+	Inner http.Handler
+}
+
+func (l *logger) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	log.Printf("start %s\n", time.Now().String())
+	l.Inner.ServeHTTP(w, req)
+	log.Printf("finish %s\n", time.Now().String())
+}
+
+func hello(w http.ResponseWriter, req *http.Request) {
+	fmt.Fprint(w, "Hello\n")
+}
+
+func main() {
+	f := http.HandlerFunc(hello)
+	l := logger{Inner: f}
+	http.ListenAndServe(":8000", &l)
+}
+```
+代码 4-3: 简单的中间件 (https://github.com/blackhat-go/bhg/ch-4/simple_middleware/main.go/)
+
+实际上是对于每个请求创建一个外部处理器，记录服务的一些信息，然后调用`hello()`函数。将日志逻辑到函数中。
+
+如同简单的路由例子，定义了名为`logger`的新类型，但是这次带有一个`Inner`字段，其本身是`http.Handler`。在`ServeHTTP()`定义中，使用`log()`输出请求的开始和结束时间，在这之间调用内部的`ServeHTTP()`方法。对于客户端，请求会在内部的处理器结束。`main()`函数内，使用`http.HandlerFunc()`在函数外面创建了一个`http.Handler`。创建`logger`，给新创建的处理器设置`Inner`。最后，使用`logger`的指针启动服务。
+
+运行代码，然后发送请求就好输出两个本次请求开始和结束时间的信息：
+```shell script
+$ go build -o simple_middleware
+$ ./simple_middleware
+2020/01/16 06:23:14 start
+2020/01/16 06:23:14 finish
+```
+接下来的部分，深入研究中间件和路由，并使用我们喜欢的第三方包，其能创建更动态的路由和在链中执行中间件。我们还将讨论迁移到更复杂场景中的中间件的一些用例。
