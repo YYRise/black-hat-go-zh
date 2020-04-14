@@ -52,3 +52,51 @@ Content-Type: text/plain; charset=utf-8
 Hello alice
 ```
 太好了!所构建的服务器读取URL中的`name`参数并使用问候语回复。
+
+### 构建简单的路由
+
+接下来构建简单的路由，如代码4-2所示。演示了如何通过检查URL路径来动态处理收到的请求。取决于URL是否含有路径`/a, /b, 或 /c`，打印出` Executing /a, Executing /b, 或 Executing /c`。其他的打印`404 Not Found`。
+```go
+package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+type router struct {
+}
+
+func (r *router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	switch req.URL.Path {
+	case "/a":
+		fmt.Fprint(w, "Executing /a")
+	case "/b":
+		fmt.Fprint(w, "Executing /b")
+	case "/c":
+		fmt.Fprint(w, "Executing /c")
+	default:
+		http.Error(w, "404 Not Found", 404)
+	}
+}
+
+func main() {
+	var r router
+	http.ListenAndServe(":8000", &r)
+}
+```
+代码 4-2: 简单的路由 (https://github.com/blackhat-go/bhg/ch-4/simple_router/main.go/)
+
+首先，定义了没有任何字段名为`router`的类型。用于实现`http.Handler`接口。为此，必须定义` ServeHTTP()`方法。该方法在请求的URL路径上使用一个`switch`语句，基于路径执行不同的逻辑。使用`404 Not Found`响应默认操作。在`main()`中，创建了一个`router`实例，并将指针传给`http.ListenAndServe()`。
+
+在终端里执行下：
+```shell script
+$ curl http://localhost:8000/a
+Executing /a
+$ curl http://localhost:8000/d
+404 Not Found
+```
+
+如期运行；程序对URL含`/a`路径的返回`Executing /a`，对不存在的路径返回`404 Not Found`响应。这是一个简单的例子。第三方路由会有更复杂的逻辑。但这应该能让你对它们的工作原理有一个基本的了解。
+
+
