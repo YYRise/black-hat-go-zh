@@ -146,3 +146,61 @@ $ ./simple_middleware
 2020/01/16 06:23:14 finish
 ```
 接下来的部分，深入研究中间件和路由，并使用我们喜欢的第三方包，其能创建更动态的路由和在链中执行中间件。我们还将讨论迁移到更复杂场景中的中间件的一些用例。
+
+
+### 使用`gorilla/mux`包创建路由
+
+如同代码4-2所示，通过路由将请求的路径匹配到函数。但是也可以用来将其他属性——HTTP方法或host头——与函数匹配。Go的生态中有几种第三方路由。这里介绍其中的一种：`gorilla/mux`。但就像其他事情一样，当遇到其他包时，我们鼓励通过研究来扩展知识。
+
+`gorilla/mux`是个成熟的第三方包，支持简单和复杂模式的路由。包括正则表达式，模式匹配，方法匹配，和子路由，其他功能等。
+
+通过几个简单的例子来看下如何使用该路由包。无需运行，因为很快就会在程序中使用它们，但是请随意尝试和试验。
+
+使用`gorilla/mux`之前先安装：
+```shell script
+$ go get github.com/gorilla/mux
+```
+现在可以开始了。使用`mux.NewRouter()`创建路由：
+```go
+r := mux.NewRouter()
+```
+
+返回的类型实现了`http.Handler`，但是也有其他相关的方法。经常用的一个是`HandleFunc()`。举例，如果定义一个新路由处理对模式`/foo`的GET请求`，你可以这样使用：
+```go
+r.HandleFunc("/foo", func(w http.ResponseWriter, req *http.Request) {
+    fmt.Fprint(w, "hi foo")
+}).Methods("GET")
+```
+现在，因为调用了`Methods()`，该路由只匹配GET请求。对其他类型的请求返回404响应。还可以继续链接其他的限定，像`Host(string)`，匹配特定的host头。下面例子只匹配host头设置为`www.foo.com`的请求。
+```go
+r.HandleFunc("/foo", func(w http.ResponseWriter, req *http.Request) {
+    fmt.Fprint(w, "hi foo")
+}).Methods("GET").Host("www.foo.com")
+```
+有时，在请求路径中匹配并传递参数是很有帮助的（例如，实现RESTful API时）。使用`gorilla/mux`非常简单，下例将打印出请求路径中`/user/`后面的内容:
+```go
+r.HandleFunc("/users/{user}", func(w http.ResponseWriter, req *http.Request) {
+    user := mux.Vars(req)["user"]
+    fmt.Fprintf(w, "hi %s\n", user)
+}).Methods("GET")
+```
+在路径定义中，使用大括号定义请求参数。可以将其看作一个已命名的占位符。然后，在处理函数内，调用`mux.Vars()`来解析请求体，返回`map[string] string`类型的数据，其值为请求的参数名字和各自的值。使用`user`作关键字。因此，`/users/bob`的请求就会产生对Bob的问候。
+```shell script
+$ curl http://localhost:8000/users/bob
+hi bob
+```
+可以更进一步，使用正则表达式限定传递的模式。例如，可以限定user参数必须是小写字母：
+```go
+r.HandleFunc("/users/{user:[a-z]+}", func(w http.ResponseWriter, req *http.Request) {
+    user := mux.Vars(req)["user"]
+    fmt.Fprintf(w, "hi %s\n", user)
+}).Methods("GET")
+```
+任何不匹配的模式现在都会返回404响应：
+```shell script
+$ curl -i http://localhost:8000/users/bob1 HTTP/1.1
+404 Not Found
+```
+在下一节中，我们将扩展路由，包括一些使用其他库的中间件。这会增加处理HTTP请求的灵活性。
+
+
