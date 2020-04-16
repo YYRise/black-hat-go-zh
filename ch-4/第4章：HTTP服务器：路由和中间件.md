@@ -203,4 +203,75 @@ $ curl -i http://localhost:8000/users/bob1 HTTP/1.1
 ```
 在下一节中，我们将扩展路由，包括一些使用其他库的中间件。这会增加处理HTTP请求的灵活性。
 
+### 使用Negroni构建中间件
+
+之前介绍的简单的中间件记录处理请求的开始和结束时间，然后返回响应。中间件无需对每个传入的请求都进行操作，且大多数情况下也都是这样的。使用中间件的理由很多，记录请求，身份认证，用户认证，映射资源。
+
+例如，可以写个执行基础认证的中间件。能够解析每个请求的认证头，验证用户名和密码，如果凭据无效就返回401响应。还可以以这样的方式将多个中间件函数链接在一起使用，即在执行完一个后再运行下一个。对于本章前面创建的日志中间件，只封装了一个函数。实际上，不是很有用，因为要使用不止一个，为此，必须有可以在一个接一个的链中执行它们的逻辑。从零开始写也并不难，但是不用重复造轮子了。现在已经有成熟的包做到这一点了：`negroni`。
+
+`negroni`，链接为`https://github.com/urfave /negroni/`，非常优秀，因为不是很大的框架。在其他框架中也很容易使用，也非常灵活。还附带了对程序都很有用的默认中间件。在使用之前先获取：
+```shell script
+$ go get github.com/urfave/negroni
+```
+
+虽然在技术上可以将negroni用于所有应用程序逻辑，但这样做并不理想，因为它是专门为充当中间件而构建的，并不是路由。相反，最好将`negroni`和其他包结合使用，如`gorilla/mux`或`net/http`。让我们使用`gorilla/mux`来构建个程序，再熟悉下`negroni`，并在他们穿越中间件练时能可视化操作的顺序。
+
+首先，在一个目录中创建名为`main.go`的新文件，如`github.com/blackhat-go/bhg/ch-4/negroni _example/`。（在克隆BHG Github仓库时，已经创建了这个目录。）现在将下面的代码加到`main.go`文件中。
+```go
+package main
+
+import (
+    "net/http"
+
+    "github.com/gorilla/mux"
+    "github.com/urfave/negroni"
+)
+
+func main() {
+    r := mux.NewRouter()
+    n := negroni.Classic()
+    n.UseHandler(r)
+    http.ListenAndServe(":8000", n)
+}
+```
+代码 4-4: Negroni 例子 (https://github.com/blackhat-go/bhg/ch-4/negroni_example/main.go/)
+
+首先，像本章之前那样调用`mux.NewRouter()`来创建路由。接下来是和`negroni`第一次交互：调用`negroni.Classic()`。创建了一个Negroni实例的指针。
+
+可以使用不同的方式。既可以使用 `negroni.Classic()`，也可以调用`negroni.New()`。第一个，`negroni.Classic()`，设置默认中间件，包括请求日志，被拦截和panic时恢复中间件，在同一目录中从公用文件夹中提供文件的中间件。`negroni.New()`函数不会创建任何默认的中间件。
+
+在`negroni`包中，每种类型的中间件都是可用的。例如，可以通过下面的步骤使用恢复包:
+```go
+n.Use(negroni.NewRecovery())
+```
+
+接下来，通过调用`n.UseHandler(r)`将路由添加到中间件上。当继续规划和构建中间件时，考虑下执行顺序。例如，认证中间件要在需要认证的处理函数之前执行。在路由之前的中间件要先处理函数之前执行；在路由之后的中间件要在处理函数之后执行。顺序很重要。本例中，还没有定义任何中间件，但很快就会了。
+
+继续编译之前创建的代码4-4，然后运行。然后向服务监听的地址`http://localhost:8000`发送web请求。`negroni`日志中间件就好输出下面的信息。输出带有时间戳，响应码，处理时间，host，和HTTP方法。
+```shell script
+$ go build -s negroni_example
+$ ./negroni_example
+[negroni] 2020-01-19T11:49:33-07:00 | 404 | 1.0002ms | localhost:8000 | GET
+```
+
+有默认中间件非常好，但真正的能力是构建自己的中间件。使用`negroni`调用几个方法就能添加中间件。看一下下面的代码。其创建了`trivial`中间件，打印信息，然后将执行传递给链中的下一个中间件:
+```go
+type trivial struct {
+}
+func (t *trivial) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+    fmt.Println("Executing trivial middleware")
+    next(w, r)
+}
+```
+
+这里的实现和之前的例子有点不一样。之前实现了`http.Handler`接口，`ServeHTTP()`方法接收两个参数：`http.ResponseWriter`和` *http.Request`。在本例中，实例`negroni.Handler`接口来替换了` http.Handler`接口。稍微不同的地方是`negroni.Handler`接口要实现`ServeHTTP()`方法，其接收的参数不是两个，而是三个：`http.ResponseWriter`, `*http.Request`, 和 `http.HandlerFunc`。`http.HandlerFunc`这个参数用来指示链中的下一个中间件函数。便于理解将其命名为`next`。在`ServeHTTP()`中处理，然后调用`next()`。传递原先接收到的`http.ResponseWriter`和`*http.Request`的值。这有效地将执行向下转移。
+
+但是仍然要让`negroni`知道将您的实现作为中间件链的一部分。通过调用negroni的`Use`方法，并传递实现的`negroni.Handler`实例就可以了：
+```go
+n.Use(&trivial{})
+```
+
+使用这种简便的方法来写自己的中间件，因为这很容易地将执行传递给下一个中间件。缺点是：必须使用`negroni`。举个例子，如果写了个给响应添加安全头的中间件，希望其实现`http.Handler`，因此可以在其他的应用中复用，又由于多数的应用没有negroni.Handler。关键是，不管中间件的用途是什么，当在在无`negroni`应用中使用negroni中间件时可能会出现兼容性问题，反之亦然。
+
+有两种方式告诉`negroni`使用你的中间件。`UseHandler (handler http.Handler)`，已经非常熟悉了，这是第一种。第二种是调用` UseHandleFunc(handlerFunc func(w http.ResponseWriter, r *http.Request))`。后者不经常使用，不允许放弃执行链中的下一个中间件。举例，如果写了个执行认证的中间件，如果有任何凭证或session信息无效的话就直接返回401响应；使用第二种方式的话不可能实现的。
 
