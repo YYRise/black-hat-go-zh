@@ -275,3 +275,84 @@ n.Use(&trivial{})
 
 有两种方式告诉`negroni`使用你的中间件。`UseHandler (handler http.Handler)`，已经非常熟悉了，这是第一种。第二种是调用` UseHandleFunc(handlerFunc func(w http.ResponseWriter, r *http.Request))`。后者不经常使用，不允许放弃执行链中的下一个中间件。举例，如果写了个执行认证的中间件，如果有任何凭证或session信息无效的话就直接返回401响应；使用第二种方式的话不可能实现的。
 
+### 使用Negroni添加认证
+
+在继续之前，先来修改下上个例子来演示下如何使用上下文。上下文非常容易地在两个函数间传递变量。代码4-5中的例子使用了`negroni`添加认证中间件。
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+
+	"github.com/gorilla/mux"
+	"github.com/urfave/negroni"
+)
+
+type badAuth struct {
+	Username string
+	Password string
+}
+
+func (b *badAuth) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+	username := r.URL.Query().Get("username")
+	password := r.URL.Query().Get("password")
+	if username != b.Username && password != b.Password {
+		http.Error(w, "Unauthorized", 401)
+		return
+	}
+	ctx := context.WithValue(r.Context(), "username", username)
+	r = r.WithContext(ctx)
+	next(w, r)
+}
+
+func hello(w http.ResponseWriter, r *http.Request) {
+	username := r.Context().Value("username").(string)
+	fmt.Fprintf(w, "Hi %s\n", username)
+}
+
+func main() {
+	r := mux.NewRouter()
+	r.HandleFunc("/hello", hello).Methods("GET")
+	n := negroni.Classic()
+	n.Use(&badAuth{
+		Username: "admin",
+		Password: "password",
+	})
+	n.UseHandler(r)
+	http.ListenAndServe(":8000", n)
+}
+
+```
+代码 4-5: 在处理函数中使用上下文 (https://github.com/blackhat-go/bhg/ch-4/negroni_example/main.go/)
+
+添加了个新的中间件，`badAuth`，进行简单的认证，纯粹是演示用。其有两个字段`Username`和`Password`，并实现了`negroni.Handler`，因为定义了之前讨论过的带有三个参数的`ServeHTTP()`。在`ServeHTTP()`方法内，先从请求中获取username和password，然后和原值比较。如果username或password不正确就停止执行，然后返回401响应。
+
+需注意的是在调用`next()`之前返回。这样链中剩余的中间件才不会执行。如果凭证正确的话，学习下将username添加到请求上下文这一详细过程。首先调用`context.WithValue()`初始化请求上下文，在上下文中设置变量名username。然后调用`r.WithContext(ctx)`确保请求使用新的上下文。如果打算用Go写web程序，会对这种模式非常熟悉，因为会经常用到。
+
+`hello()`函数中，通过使用`Context().Value(interface{})`函数从请求上下文中获取username，该函数返回`interface{}`。由于已经知道是个字符串类型，这里就可以对类型强转。如果不能断定类型，或不确定上下文中是否有该值的话，使用`switch`处理。
+
+编译并执行代码4-5，然后发送带有正确和错误凭证的请求。会看到下面的输出：
+```shell script
+$ curl -i http://localhost:8000/hello
+HTTP/1.1 401 Unauthorized
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Thu, 16 Jan 2020 20:41:20 GMT
+Content-Length: 13
+Unauthorized
+$ curl -i 'http://localhost:8000/hello?username=admin&password=password'
+HTTP/1.1 200 OK
+Date: Thu, 16 Jan 2020 20:41:05 GMT
+Content-Length: 9
+Content-Type: text/plain; charset=utf-8
+
+Hi admin
+```
+
+使用不带凭证的请求导致中间件返回401认证错误。使用有效的凭据发送同一请求，会生成只有经过身份验证的用户才能访问到的超级机密问候语消息。
+
+需要学习的东西太多了。到目前为止，处理函数中仅仅使用`fmt.FPrintf() `向`http.ResponseWriter`实例写入响应。下一部分，学习使用Go的模板包更动态的返回HTML的方法。
+
+
