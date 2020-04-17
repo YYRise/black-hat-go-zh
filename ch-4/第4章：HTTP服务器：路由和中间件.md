@@ -355,4 +355,59 @@ Hi admin
 
 需要学习的东西太多了。到目前为止，处理函数中仅仅使用`fmt.FPrintf() `向`http.ResponseWriter`实例写入响应。下一部分，学习使用Go的模板包更动态的返回HTML的方法。
 
+### 使用模板生成HTML响应
+
+`Templates`使用Go中的变量动态地生成内容，包括HTML。很多语言都有生成模板的第三方包。Go有两个模板包：`text/template`和 `html/template`。本章使用HTML这个包，这符合需要的上下文编码。
+
+Go包的一个奇妙之处在于它是上下文感知的：根据变量在模板中的位置对变量进行不同的编码。举例，如果字符串作为href属性的URL，字符串就会被URL编码，但是相同的字符串在HTML元素中就会被HTML编码。
+
+要想创建并使用模板，首先要定义模板，其中包含占位符来指示要呈现的动态上下文数据。这种语法对使用过Paython的Jinja的人非常熟悉。渲染模板时，会传递一个变量将用作此上下文。该变量既可以是有多个字段的复杂结构，也可以是个简单的变量。
+
+让我们来看下代码4-6这个例子，这是使用JavaScript创建的简单模板并生成占位符。这是个精心设计的示例来演示如何动态填充返回到浏览器的内容。
+```go
+package main
+
+import (
+	"html/template"
+	"os"
+)
+
+var x = `
+<html>
+  <body>
+    Hello {{.}}
+  </body>
+</html>
+`
+
+func main() {
+	t, err := template.New("hello").Parse(x)
+	if err != nil {
+		panic(err)
+	}
+	t.Execute(os.Stdout, "<script>alert('world')</script>")
+}
+```
+代码 4-6: HTML 模板 (https://github.com/blackhat-go/bhg/ch-4/template_example/main.go/)
+
+做的第一件事是创建变量`x`来存储HTML模板。这里使用内嵌到代码中的字符串定义模板，但是大多数情况下需要将模板保存为文件。注意，该模板只是个简单的HTML页面。在模板内，使用{{variable-name}}这种约定来定义占位符，`variable-name`所在的地方是上下文数据中将要渲染的数据元素。记住，这可以是一个结构或其他简单的数据。本例中使用了一个点，即渲染整个上下文。如果使用单个字符串的话，这是可以的，但是有一个很大很复杂的数据结构，如结构体，通过这个点就能取到需要的字段。例如，传递给模板一个带有`Username`字段的结构体，通过使用`{{.Username}}`就能渲染该字段。
+
+接下来，在`main()`函数中，通过调用`template.New(string)`创建一个新模板。然后调用`Parse(string)`确保是正确的模板模式，并对其解析。这两个函数一起使用返回了个`Template`类型的指针。
+
+虽然本例只使用一个模板，但是可以将模板嵌入到其他模板中。在使用多个模板时，为了能够调用它们，对它们进行命名是很重要的。最后，调用`Execute(io.Writer, interface{})`，通过传入的参数处理模板后作为第二个参数，然后将其写入到前面的`io.Writer`中。这里使用`os.Stdout`只是为了演示用。传给`Execute()`的第二个参数是用于渲染模板的上下文。
+
+运行代码查看生成的 HTML，应该会注意到作为上下文的一部分所的脚本标记和单引号字符被正确编码了。Neat-o!
+```shll
+$ go build -o template_example $ ./template_example
+<html>
+  <body>
+    Hello &lt;script&gt;alert(&#39;world&#39;)&lt;/script&gt;
+  </body>
+</html>
+```
+
+关于模板多说一些。可以使用逻辑运算符;可以与循环和其他控制结构一起使用。可以调用内置函数，甚至能定义和暴露出任意的函数能大大地扩展模板功能。Double neat-o! 最好能深入研究这些可行性。已经超出了本书的内容，但真的很强大。
+
+如何摆脱创建服务器和处理请求的基础知识，而是专注于更邪恶的事情。让我们来创建一个凭据收割机吧！
+
 
