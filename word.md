@@ -70,3 +70,11 @@ reveal
 
 massively
 
+The upside to the built-in package
+
+The downside of using Go’s built-in package
+
+upcoming
+
+follow along with
+
