@@ -60,3 +60,13 @@ take it up a notch
 
 
 
+exfiltration
+
+savvy
+
+enumerated
+
+reveal
+
+massively
+
