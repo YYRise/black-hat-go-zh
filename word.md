@@ -85,3 +85,13 @@ denote
 As you can probably tell,
 
 legitimate
+
+bottleneck
+
+ robust, elegant 
+
+opted to
+
+pertinent
+
+conservative
