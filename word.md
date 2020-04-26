@@ -95,3 +95,11 @@ opted to
 pertinent
 
 conservative
+
+individual
+
+infeasible
+
+in turn
+
+track down
