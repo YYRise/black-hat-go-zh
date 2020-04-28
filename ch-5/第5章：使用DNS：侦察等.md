@@ -249,3 +249,39 @@ func lookup(fqdn, serverAddr string) []result {
 首先，定义存储结果的切片。下一步，复制传入的第一个参数 `FQDN` ，这样不但不会丢失猜测的原始 `FQDN` ，而且还可以用来第一次查询。之后启动无限循环，尝试解析 **FQDN** 的 **CNAME** 。如果没有发生错误，且至少返回一个 **CNAME** ，设置 `cfqdn` 为返回的 **CNAME** ，使用 `continue` 退回到循环的开始。跟随 ** CNAMES** 的轨迹，直到失败。失败则表明到达链尾，然后就可以查找 **A** 记录；但是如果有错误，则表明在查找记录时某些东西出错了，然后早点退出循环。如果找到有效的 **A** 记录，将每个IP地址追加到待返回的 `results` 切片中，然后退出循环。最后，将 `results` 返回给调用者。
 
 与名称解析相关的逻辑看起来很合理。但是没有考虑性能。为方便并发将示例改为 goroutine 执行。
+
+### 传参给工作函数
+
+创建 `goroutine` 池用于将任务传送给执行任务单元的 *worker function*。通过使用 `channel` 协调分配任务和收集结果。在第2章中的构建并发的端口扫描有过类似做法。
+
+继续扩展清单 5-3的代码。首先，在 `main()` 函数外创建 `worker()` 函数。该函数的参数为三个  channel：一个 channel 用于发送是否关闭的信号，一个域名 channel 用于接收工作，一个channel 用于发送结果。该函数还需要一个最终的字符串参数来指定要使用的DNS服务器。`worker()` 函数的代码如下：
+
+```go
+type empty struct{}
+
+func worker(tracker chan empty, fqdns chan string, gather chan []result, serverAddr string) {
+	for fqdn := range fqdns {
+		results := lookup(fqdn, serverAddr)
+		if len(results) > 0 {
+			gather <- results
+		}
+	}
+	var e empty
+	tracker <- e
+}
+```
+
+
+
+引入 `worker()` 函数前，先定义一个 empty 类型用于追踪 worker 完成。empty 是个没有字段的 `struct` ；使用空的 struct 是因为其字节数为0，在使用时几乎没有影响和开销。然后，在 `worker()` 函数内，循环遍历用于传递FQDN的域名 channel 。之后收集 lookup() 函数的结果，并且检查确保至少有一个结果发给 `gather` channel，该channel将结果累积到 main() 中。channel被关闭后循环会退出，把 `empty` 结构体发送给 `tracker` channel ，通知调用者所有的工作的完成了。 将空 `struct` 发送给 `tracker` channel 是重要的最后一步。如果没有这一步的话会有竞争条件，因为调用者可能在 ` gather` channel 收到结果之前就退出了。
+
+至此，所有的前提准备都创建好了，回到 `main()` 中继续完成清单 5-3中的程序。定义几个变量来保存结果，定义传递给 `worker` 的channel。把下面代码加到 `main()` 中。
+
+```go
+var results []result
+fqdns := make(chan string, *flWorkerCount)
+gather := make(chan []result)
+tracker := make(chan empty)
+```
+
+通过用户提供的执行工作的数量来创建带有缓冲的 `fqdns` channel。这能让任务执行的稍微快些，因为在生产者使其阻塞前能持有多个信息。
