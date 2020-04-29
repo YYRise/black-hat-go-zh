@@ -284,4 +284,35 @@ gather := make(chan []result)
 tracker := make(chan empty)
 ```
 
-通过用户提供的执行工作的数量来创建带有缓冲的 `fqdns` channel。这能让任务执行的稍微快些，因为在生产者使其阻塞前能持有多个信息。
+通过用户提供的执行工作的数量来创建带有缓冲的 `fqdns` channel。这能让任务执行的稍微快些，因为在生产者使其阻塞前能持有超过1个信息。
+
+### 使用**bufio**创建扫描器
+
+接下来，打开用户提供的文件作为单条使用。打开文件后，使用 `bufio` 包创建一个 `scanner` 。该扫描器一次读取文件的一行数据。在 `main()` 中加入下面的代码：
+
+```go
+fh, err := os.Open(*flWordlist) 
+if err != nil {
+	panic(err) 
+}
+defer fh.Close()
+scanner := bufio.NewScanner(fh)
+```
+
+如果返回的错误不为 `nil` 的话在这地方使用内置函数 `panic()` 。当写的包或程序给其他人使用时，应该考虑用更简洁的格式显示这些信息。
+
+使用新创建的 `scanner` 从提供的词条抓取一行文本，然后结合该文本和用户提供的域来创建**FQDN**。将结果发送给 `fqdns` channel 。但是必须要先启动工做函数。这是非常重要的顺序。如果没有先启动工作函数就把任务发送给 `fqdns` channel，channel 很快就会满了，然后生产者就会阻塞。将下面代码加入到 `main()` 函数中。这段代码的作用就是启动工作 goroutine，读取输入文件，将任务发送给 `fqdns` channel 。
+
+```go
+for i := 0; i < *flWorkerCount; i++ {
+    go worker(tracker, fqdns, gather, *flServerAddr)
+}
+for scanner.Scan() {
+	fqdns <- fmt.Sprintf("%s.%s", scanner.Text()w, *flDomain)
+}
+```
+
+使用这个方式创建工作者类似于在构建并发端口扫描器时所做的：使用for循环用户指定的次数。在第2个for循环中使用 `scanner.Scan()` 抓取文件的每行数据。当读完所有行时循环结束。使用 `scanner.Text()` 可以将被扫描的行转化成字符串形式。
+
+开始工作了！享受一秒钟。在读下一段代码之前，想一想程序的进度和在本书中已完成了哪些内容。试着完成程序，然后继续下一节，在下一节中将带你完成剩余的部分。
+
