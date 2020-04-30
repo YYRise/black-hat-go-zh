@@ -120,7 +120,7 @@ func main() {
 
 花点时间研究下代码，修改下 DNS 查询，查找其他的记录。类型断言可能不熟悉，但它与其他语言中的类型转换类似。
 
-### 枚举子域
+### 枚举子域名
 
 既然您已经知道如何使用Go作为DNS客户端，那么就可以创建有用的工具了。在本部分，创建子域猜测程序。猜测目标的子域名和其他DNS记录是侦察的基础步骤，因为知道的子域越多，就可以尝试越多的攻击。为程序提供一个候选单词列表(一个字典文件)，用于猜测子域。
 
@@ -315,4 +315,197 @@ for scanner.Scan() {
 使用这个方式创建工作者类似于在构建并发端口扫描器时所做的：使用for循环用户指定的次数。在第2个for循环中使用 `scanner.Scan()` 抓取文件的每行数据。当读完所有行时循环结束。使用 `scanner.Text()` 可以将被扫描的行转化成字符串形式。
 
 开始工作了！享受一秒钟。在读下一段代码之前，想一想程序的进度和在本书中已完成了哪些内容。试着完成程序，然后继续下一节，在下一节中将带你完成剩余的部分。
+
+### 收集并显示结果
+
+在最后，先启动一个匿名goroutine来收集任务执行的结果。把下面代码添加到 `main()` 中：
+
+```go
+go func() {
+	for r := range gather {
+		results = append(results, r...v) 
+    }
+	var e empty 
+    tracker <- e
+}()
+```
+
+通过循环遍历 `gather` 管道，将接收到的结果追加到 `results` 切片中。因为将一个切片追加到另一个切片，所以必须要使用 `...`  。`gather` 管道关闭后循环结束，像之前那样发送一个空 `struct` 到 `tracker` 管道 。 这会防止在append()` 还没完成就把结果返回给用户。
+
+剩下的就是关闭通道并显示结果。在 ` main()` 函数的底部包含以下代码，以便关闭通道并将结果显示给用户:
+
+```go
+close(fqdns)
+for i := 0; i < *flWorkerCount; i++ {
+	<-tracker 
+}
+close(gather) 
+<-tracker
+```
+
+第一个应该关闭的是 `fqdns` 管道，因为已经把所有的任务发送给这个管道。接下来，从每个任务执行函数的 `tracker` 管道中接收，这样就知道执行函数已经完成退出了。收到和工作函数相等数量的信号就可以关闭 `gather` 管道了，因为不会再收到结果了。最后，再一次读取 `tracker` 管道让收集的goroutine完全完成。
+
+现在结果还未呈现给用户。来完成吧。如果你愿意的话可以使用简单的循环来遍历 `results` 切片，使用 `fmt.Printf()` 打印 `Hostname` 和 `IPAddress` 。相反，我们使用几个Go的优秀内置包来显示数据；`tabwriter` 是其中之一。该包会友好的方式输出数据，甚至是按制表符分隔的列。在 `main()` 函数的最后加入下面的代码来使用 `tabwriter` 打印结果：
+
+```go
+w := tabwriter.NewWriter(os.Stdout, 0, 8, 4, ' ', 0) 
+for _, r := range results {
+	fmt.Fprintf(w, "%s\t%s\n", r.Hostname, r.IPAddress) 
+}
+w.Flush()
+```
+
+清单 5-4 是完整的程序代码
+
+```go
+package main
+
+import (
+	"bufio"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"text/tabwriter"
+
+	"github.com/miekg/dns"
+)
+
+func lookupA(fqdn, serverAddr string) ([]string, error) {
+	var m dns.Msg
+	var ips []string
+	m.SetQuestion(dns.Fqdn(fqdn), dns.TypeA)
+	in, err := dns.Exchange(&m, serverAddr)
+	if err != nil {
+		return ips, err
+	}
+	if len(in.Answer) < 1 {
+		return ips, errors.New("no answer")
+	}
+	for _, answer := range in.Answer {
+		if a, ok := answer.(*dns.A); ok {
+			ips = append(ips, a.A.String())
+		}
+	}
+	return ips, nil
+}
+
+func lookupCNAME(fqdn, serverAddr string) ([]string, error) {
+	var m dns.Msg
+	var fqdns []string
+	m.SetQuestion(dns.Fqdn(fqdn), dns.TypeCNAME)
+	in, err := dns.Exchange(&m, serverAddr)
+	if err != nil {
+		return fqdns, err
+	}
+	if len(in.Answer) < 1 {
+		return fqdns, errors.New("no answer")
+	}
+	for _, answer := range in.Answer {
+		if c, ok := answer.(*dns.CNAME); ok {
+			fqdns = append(fqdns, c.Target)
+		}
+	}
+	return fqdns, nil
+}
+
+func lookup(fqdn, serverAddr string) []result {
+	var results []result
+	var cfqdn = fqdn // Don't modify the original.
+	for {
+		cnames, err := lookupCNAME(cfqdn, serverAddr)
+		if err == nil && len(cnames) > 0 {
+			cfqdn = cnames[0]
+			continue // We have to process the next CNAME.
+		}
+		ips, err := lookupA(cfqdn, serverAddr)
+		if err != nil {
+			break // There are no A records for this hostname.
+		}
+		for _, ip := range ips {
+			results = append(results, result{IPAddress: ip, Hostname: fqdn})
+		}
+		break // We have processed all the results.
+	}
+	return results
+}
+
+func worker(tracker chan empty, fqdns chan string, gather chan []result, serverAddr string) {
+	for fqdn := range fqdns {
+		results := lookup(fqdn, serverAddr)
+		if len(results) > 0 {
+			gather <- results
+		}
+	}
+	var e empty
+	tracker <- e
+}
+
+type empty struct{}
+
+type result struct {
+	IPAddress string
+	Hostname  string
+}
+
+func main() {
+	var (
+		flDomain      = flag.String("domain", "", "The domain to perform guessing against.")
+		flWordlist    = flag.String("wordlist", "", "The wordlist to use for guessing.")
+		flWorkerCount = flag.Int("c", 100, "The amount of workers to use.")
+		flServerAddr  = flag.String("server", "8.8.8.8:53", "The DNS server to use.")
+	)
+	flag.Parse()
+
+	if *flDomain == "" || *flWordlist == "" {
+		fmt.Println("-domain and -wordlist are required")
+		os.Exit(1)
+	}
+
+	var results []result
+
+	fqdns := make(chan string, *flWorkerCount)
+	gather := make(chan []result)
+	tracker := make(chan empty)
+
+	fh, err := os.Open(*flWordlist)
+	if err != nil {
+		panic(err)
+	}
+	defer fh.Close()
+	scanner := bufio.NewScanner(fh)
+
+	for i := 0; i < *flWorkerCount; i++ {
+		go worker(tracker, fqdns, gather, *flServerAddr)
+	}
+
+	for scanner.Scan() {
+		fqdns <- fmt.Sprintf("%s.%s", scanner.Text(), *flDomain)
+	}
+	// Note: We could check scanner.Err() here.
+
+	go func() {
+		for r := range gather {
+			results = append(results, r...)
+		}
+		var e empty
+		tracker <- e
+	}()
+
+	close(fqdns)
+	for i := 0; i < *flWorkerCount; i++ {
+		<-tracker
+	}
+	close(gather)
+	<-tracker
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 8, 4, ' ', 0)
+	for _, r := range results {
+		fmt.Fprintf(w, "%s\t%s\n", r.Hostname, r.IPAddress)
+	}
+	w.Flush()
+}
+```
+
+清单 5-4: 完整的猜域名程序 (https://github.com/bhg/ch-5/subdomain_guesser/main.go/)
 

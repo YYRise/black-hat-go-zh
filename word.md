@@ -109,3 +109,5 @@ prerequisite
 Take a second to bask in greatness.
 
 the next section, where we’ll walk you through the rest.
+
+To finish up,
