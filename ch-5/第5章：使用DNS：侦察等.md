@@ -507,4 +507,34 @@ func main() {
 }
 ```
 
-清单 5-4: 完整的猜域名程序 (https://github.com/bhg/ch-5/subdomain_guesser/main.go/)
+清单 5-4: 完整的子域猜测程序 (https://github.com/bhg/ch-5/subdomain_guesser/main.go/)
+
+子域猜测程序完成了。现在，应该能够编译并执行这个新子域猜测工具了。使用在开源库中词条或字典文件（Google搜到更多）试一下。调整任务执行者的数量；可能会发现如果执行的太快，会得到不同的结果。下面是使用100个执行者在作者的系统中所得到的结果：
+
+```shell
+$ wc -l namelist.txt
+1909 namelist.txt
+$ time ./subdomain_guesser -domain microsoft.com -wordlist namelist.txt -c 1000
+ajax.microsoft.com					72.21.81.200
+buy.microsoft.com					157.56.65.82
+news.microsoft.com					192.230.67.121
+applications.microsoft.com			168.62.185.179
+sc.microsoft.com					157.55.99.181
+open.microsoft.com					23.99.65.65
+ra.microsoft.com					131.107.98.31
+ris.microsoft.com					213.199.139.250
+smtp.microsoft.com					205.248.106.64
+wallet.microsoft.com				40.86.87.229
+jp.microsoft.com					134.170.185.46
+ftp.microsoft.com					134.170.188.232
+develop.microsoft.com				104.43.195.251
+./subdomain_guesser -domain microsoft.com -wordlist namelist.txt -c 1000 0.23s user 0.67s system 22% cpu 4.040 total
+
+            
+ 
+```
+
+输出了几个FQDNs及其IP地址。基于输入文件中的词条来猜测每个结果的子域值。
+
+现在已经构建了自己的子域猜测工具，并学会了如何解析主机名和IP地址来枚举不同的DNS记录，接下来就可以编写自己的DNS服务器和代理了。
+
