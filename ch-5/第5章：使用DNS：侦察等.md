@@ -508,4 +508,3 @@ func main() {
 ```
 
 清单 5-4: 完整的猜域名程序 (https://github.com/bhg/ch-5/subdomain_guesser/main.go/)
-
