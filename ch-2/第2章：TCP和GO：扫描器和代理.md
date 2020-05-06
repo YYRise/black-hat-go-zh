@@ -20,9 +20,9 @@
 开始使用*传输控制协议(TCP)* 开发Go的实际应用，TCP是面向连接的可靠通信的主要标准，以及现代网络的基础。TCP无处不在，并且有完善的文档库、代码示例以及易于理解的常用数据包流。必须了解TCP才能全面评估，分析，查询和操作网络。
 
 作为攻击者，应该明白TCP的工作原理，并能够开发可用的TCP组件，以便可以识别开启/关闭的端口，识别潜在地错误的结果，像误报（如，SYN洪流保护）和通过端口转发绕过出口限制等。在本章中，将学习Go中的基本TCP通信。构建并发的，经过适当控制的端口扫描程序；创建可用于端口转发的TCP代理；并重新创建Netcat的“开放安全漏洞”功能。
-  
+
 已经有了书籍来讲解TCP的每一个细微的差别，包括数据包的结构和流，可靠性，通信重组等。这种细节超出了本书的范围。更多详细信息请阅读Charles M. Kozierok撰写的《TCP / IP Guide》（No Starch Press，2005）。（注：No Starch Press是一家专注于出版计算机图书的出版社）
-  
+
 ## 理解TCP握手
 复习回顾一下基本知识。图2-1显示了TCP在查询端口以确定端口是开发，关闭还是过滤时如何使用握手过程。
 
@@ -403,7 +403,7 @@ func main() {
 代码 2-9: reader 和 writer 示例 (https://github.com/blackhat-go/bhg/ch-2/io-example/main.go/)
 
 首先定义了两个类型：FooReader 和 FooWriter。在FooReader 中实现了 Read([]byte) 函数，在 FooWriter 中实现了 Write([]byte) 函数。在该例中，这两个函数从 stdin 读和写到 stdout 。
- 
+
 注意到 FooReader 和 os.Stdin 的 Read 函数都返回数据长度和错误。数据本身被复制到函数的 byte 切片中。这和本节前面定义的 Reader 接口是一致的。main() 函数新建切片（命名为input），然后继续在 FooReader.Read([]byte) 和 FooReader.Write([]byte) 使用。
 
 运行代码，结果如下：
@@ -688,7 +688,7 @@ func NewFlusher(w io.Writer) *Flusher {
     return count, err
 }
 ```
-	
+
 Flusher 实现了 Write([]byte) 函数，将数据写入底层的缓冲写入器，然后排空输出。
 
 完成自定义的 writer ， 就可以调整链接处理器实例化 Flusher 并赋值给 cmd.Stdout：
@@ -731,7 +731,7 @@ func handle(conn net.Conn) {
     cmd.Run()
     conn.Close() }
 ```
-		
+
 调用 io.Pipe() 创建了同步连接的 reader 和 writer —— 任何写入到 writer（即 wp ） 的数据都会被 reader (rp) 读取。因此，将 writer 赋值给 cmd.Stdout ，然后使用 Copy(Writer, Reader) 将 PipeReader 连接到 TCP 的链接。使用 goroutine 防止代码阻塞。命令的任何标准输出都将发送到 writer ，然后通过管道将 reader 的输出传送到TCP的链接。如此以来就优雅了吧？
 
 这样，就从 TCP 等待连接的的角度成功实现了 Netcat 的巨大的安全漏洞。可以使用类似的逻辑来实现从连接的客户端将本地执行文件的 stdout 和 stdin 重定向到远程监听器。详细的细节留给您确定，但可能包括以下内容：

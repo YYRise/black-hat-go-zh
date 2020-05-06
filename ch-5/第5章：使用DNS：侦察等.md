@@ -544,5 +544,12 @@ develop.microsoft.com				104.43.195.251
 
 开始之前先要搭建实验环境。这个实验环境能模拟真实的场景，而不必拥有合法的域和使用昂贵的基础设施，但是如果想注册域并使用真实的服务器，请随意。
 
+### 测试环境搭建和服务结束
 
+测试环境使用两个虚拟机（VMs）：一个Windows VM作为客户端，一个Ubuntu VM作为服务器。本例使用VMWare工作站，并为每台机器提供桥接网络模式；可以使用私人虚拟网络，但要确保这两台机器在同一网络中。服务器运行两个官方 Java Docker image 构建的 Cobalt Strike Docker 实例（Cobalt Strike依赖于Java）。图5-1是搭建的示意图。
+
+<div align=center><img width = '800' height ='300' src ="https://github.com/YYRise/black-hat-go/raw/dev/ch-5/images/5-1.jpg"/></div>
+<center> 图 5-1: 搭建 DNS 服务的测试环境 </center>
+
+首先创建Ubuntu VM。为此，使用16.04.1版本的TLS。不需要特别考虑，但是VM至少应该配置4g内存和两个CPU。如果已经有VM或主机的话也可以使用。操作系统安装之后，就可以安装Go的开发环境了（参见第1章）。
 
