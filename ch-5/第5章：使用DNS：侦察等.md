@@ -553,3 +553,104 @@ develop.microsoft.com				104.43.195.251
 
 首先创建Ubuntu VM。为此，使用16.04.1版本的TLS。不需要特别考虑，但是VM至少应该配置4g内存和两个CPU。如果已经有VM或主机的话也可以使用。操作系统安装之后，就可以安装Go的开发环境了（参见第1章）。
 
+安装完Ubuntu VM后，再安装 *Docker* 。在本章代理那部分，使用Docker运行多个Cobalt Strike实例。在终端中运行下面的命令来安装Docker：
+
+```shell script
+$ sudo apt-get install apt-transport-https ca-certificates 
+sudo apt-key adv \
+	--keyserver hkp://ha.pool.sks-keyservers.net:80 \
+	--recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+$ echo "deb https://apt.dockerproject.org/repo ubuntu-xenial main" | sudo tee /etc/apt/sources.list.d/docker.list
+$ sudo apt-get update
+$ sudo apt-get install linux-image-extra-$(uname -r) linux-image-extra-virtual $ sudo apt-get install docker-engine
+$ sudo service docker start
+$ sudo usermod -aG docker USERNAME
+```
+
+安装好之后需要重启系统。接下来执行下面的命令验证Docker是否安装成功：
+
+```shell script
+$ docker version 
+Client:
+	Version: 1.13.1 API version: 1.26
+	Go version:
+    Git commit:
+    Built:
+    OS/Arch:
+    go1.7.5
+    092cba3
+    Wed Feb 8 06:50:14 2017 linux/amd64
+```
+
+Docker安装好之后，使用下面的命令下载Java镜像。该命令仅拉取基础的Docker Java镜像，但不会创建任何容器。这是为稍后构建Cobalt Strike而准备的。
+
+```shell
+$ docker pull java
+```
+
+最后，确认下 *dnsmasq* 没有在运行，因为其会监听53端口。否则的话，DNS服务不能运作，因为使用同一个端口。如果在运行就通过ID杀死进程：
+
+```shell
+$ ps -ef | grep dnsmasq 
+nobody 3386 2017 0 12:08 
+$ sudo kill 3386
+```
+
+现在创建 **Windows VM**。同样，如果有现成的机器也可以使用。不需要任何特殊的设置，基础的设置就可以了。系统创建成功后，设置DNS服务为Ubuntu系统的IP地址。
+
+为了测试实验环境并介绍如何编写DNS服务器，先编写一个只返回 **A** 记录的基本服务器。在Ubuntu系统的**GOPATH**下，新建 **github.com/blackhat-go/bhg/ch-5 /a_server* * 文件夹和 *main.go* 文件。清单 5-5是创建简单的DNS服务器的完整代码。
+
+```go
+package main
+
+import (
+	"log"
+    "net"
+
+	"github.com/miekg/dns"
+)
+func main() {
+	dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
+		var resp dns.Msg
+        resp.SetReply(req)
+        for _, q := range req.Question {
+            a := dns.A{
+                Hdr: dns.RR_Header{
+                Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0,
+                },
+            	A: net.ParseIP("127.0.0.1").To4(),
+            }
+        	resp.Answer = append(resp.Answer, &a) 
+        }
+		w.WriteMsg(&resp) 
+    })
+	log.Fatal(dns.ListenAndServe(":53", "udp", nil)) 
+}
+```
+
+清单 5-5: DNS 服务 (https://github.com/blackhat-go/bhg/ch-5/a_server/main.go/)
+
+服务器代码先调用 `HandleFunc()`；看起来有点像 `net/http` 包。该函数的第一个参数是要匹配的查询模式。使用此模式向DNS服务器指明哪些请求将由提供的函数处理。代码中使用的点号，表明第二个参数中的函数处理所有的请求。
+
+传递给 `HandleFunc()` 函数的第二个参数是含有处理逻辑的函数。该函数接收两个参数：一个`ResponseWriter` 和自身的请求。在该处理函数里面，先创建了一个message并设置 reply。接下来为每个 question 创建 answer，使用了**A** 记录，其实现了`RR` 接口。这部分会根据你要找的answer的类型而有所不同。使用 `append()` 将A指针追加到响应的 `Answer` 字段上。响应完成后，可以使用 `WriteMessage()` 将此message写到调用的客户端。最后，调用 `ListenAndServe() ` 启动服务。此代码将所有请求解析到 127.0.0.1 的IP地址上。
+
+编译并启动服务后 ， 使用 `dig` 就可以测试。确认要查询的主机名解析到127.0.0.1。这就表示如设计的那样工作。
+
+```shell
+$ dig @localhost facebook.com
+; <<>> DiG 9.10.3-P4-Ubuntu <<>> @localhost facebook.com ; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 33594
+;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0 ;; WARNING: recursion requested but not available
+  ;; QUESTION SECTION:
+;facebook.com. IN A
+;; ANSWER SECTION:
+facebook.com. 0 IN A
+;; Query time: 0 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1)
+;; WHEN: Mon Dec 19 13:13:45 MST 2016 ;; MSG SIZE rcvd: 58
+127.0.0.1
+```
+
+注意到该服务需要使用sudo或root账号启动，这是因为服务监听在私密端口——53。如果服务不工作，需要杀掉 *dnsmasq* 进程。
