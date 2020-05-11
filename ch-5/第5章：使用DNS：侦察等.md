@@ -658,3 +658,49 @@ facebook.com. 0 IN A
 ### 创建DNS服务和代理
 
 *DNS tunneling，* 一种数据过滤技术，主要用于建立C2通道的网络与限制性的出口控制。如果使用权威的DNS服务，攻击者可以路由到自己的DNS服务器，然后再通过internet路由出去，而不需要直接连接到自己的基础设施。虽然速度会慢点，但很难防御。一些开源的和专有的有效负载执行DNS隧道，Cobalt Strike’s Beacon是其中一个。在本部分要编写自己的DNS服务和代理，并学习如何使用Cobalt Strike对C2有效负载进行多路复用。
+
+#### 配置**Cobalt Strike**
+
+如果之前用过**Cobalt Strike**的话，应该知会知道默认情况下*teamserver*监听53端口。因此，根据文档的建议，系统上只能运行一台服务器，保持一对一的比例。对于大中型团队来说，这可能会是个问题。例如，如果有20个团队对20个单独的组织进行攻击，运行teamserver的20个系统会有些困难。这个问题并不只是在Cobalt Strike 和 DNS中，也存在于包括HTTP有效负荷在内的其他协议，像  Metasploit Meterpreter 和 Empire。尽管可以监听在各种完全惟一的端口上，但在像TCP 80和443这样的公共端口上，有更大的可能性会导致流量溢出。因此，问题就变成和其他团队如何共享同一端口然后路由到多个侦听器? 当然，答案是使用代理。回到实验环境。
+
+> 注：在实际的项目中，您可能希望有多级的诡计、抽象和转发来伪装 teamserver 的位置。这可以使用UDP和TCP转发到各种主机提供商的小型实用服务器来完成。主 *teamserver* 和代理任然运行在单独的系统上。将teamserver集群放在具有大量 *RAM* 和 *CPU* 资源的大型系统上。
+
+在两个Docker容器中运行两个Cobalt Strike的teamserver。这样服务监听在53端口上，每个 teamserver 有自己的系统 ，因此，有单独的IP。使用Docker内置的网络机制将UDP的端口从容器中映射到主机。在开始之前，在 *https://www.cobaltstrike.com/trial/* 上下载Cobalt Strike的试用版。在遵循试用注册说明之后，在下载目录中应该会有个新的 *tarball*。现在可以启动teamservers了。
+
+在终端执行下面的命令启动第一个容器：
+
+```shell
+$ docker run --rm -it -p 2020:53 -p 50051:50050 -v full path to cobalt strike download:/data java /bin/bash
+```
+
+这条命令做了几件事。第一，告诉Docker退出后移除容器，并且在启动后希望与容器进行交互。其次，将主机系统的2020端口映射到容器的53端口，将50051端口映射到50050。接下来将含有Cobalt Strike tarball的目录映射到容器的data目录。Docker会创建指定的任何目录。最后，提供使用的镜像（本例中是Java），和启动后执行的命令。这会在运行的Docker容器中留下一个bash shell。
+
+进入Docker容器后，通过执行以下命令启动teamserver:
+
+```shell
+$ cd /root
+$ tar -zxvf /data/cobaltstrike-trial.tgz
+$ cd cobaltstrike
+$ ./teamserver <IP address of host> <some password>
+```
+
+使用的IP地址应该是VM的，而不是容器的IP地址。
+
+接下来，在Ubuntu主机上打开一个新的终端窗口，并切换到包含Cobalt Strike tarball的目录。执行下面的命令来安装Java，然后启动Cobalt Strike：
+
+```shell
+$ sudo add-apt-repository ppa:webupd8team/java 
+$ sudo apt update
+$ sudo apt install oracle-java8-installer
+$ tar -zxvf cobaltstrike-trial.tgz
+$ cd cobaltstrike $ ./cobaltstrike
+```
+
+Cobalt Strike 的GUI应该就启动了。清除试用消息后，将teamserver端口更改为50051，并设置自己的用户名和相应的密码。
+
+在Docker中成功启动并连接到完全运行的服务器。现在，重复相同的过程来启动第二个服务。按照前面的步骤启动一个新的teamserver。这一次，映射不同的端口。增加一个端口就可以也合乎逻辑。在新终端窗口中，执行以下命令启动一个新容器并监听2021和50052端口：
+
+```shell
+$ docker run --rm -it -p 2021:53 -p 50052:50050-v full path to cobalt strike download:/data java /bin/bash
+```
+

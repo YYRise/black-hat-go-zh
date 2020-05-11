@@ -119,3 +119,7 @@ nefarious
 No special considerations need to be made, 
 
 exfiltration
+
+standing up
+
+disguise
