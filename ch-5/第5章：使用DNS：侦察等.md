@@ -704,3 +704,24 @@ Cobalt Strike 的GUI应该就启动了。清除试用消息后，将teamserver�
 $ docker run --rm -it -p 2021:53 -p 50052:50050-v full path to cobalt strike download:/data java /bin/bash
 ```
 
+从 Cobalt Strike 客户端，通过选择 **Cobalt Strike -> **New Connection** 创建新的连接，将端口修改为 50052，选中 **Connect** 。连接后，您应该会在控制台底部看到两个切换服务的选项卡。
+
+现在成功地连接到两个 teamserver 了。启动两个DNS监听。从菜单中选择 **Configure Listeners** 来创建客户端，其图标看起来像一副耳机。完成后，从底部菜单中选择 **Add** 以打开 New Listener 窗口。输入下面的信息：
+
+- Name:**DNS 1**
+- Payload: **windows/beacon_dns/reverse_dns_txt**
+- Host: ****
+- Port: **0**
+
+本例中，端口设置为80，但是DNS的负载仍然使用53端口，所以不要担心。80端口专门用于混合有效负载。图5-2是New Listener 窗口和应该输入的信息。
+
+<div align=center><img width = '924' height ='518' src ="https://github.com/YYRise/black-hat-go/raw/dev/ch-5/images/5-2.jpg"/></div>
+<center> 图 5-2: 添加监听 </center>
+
+接下来，将提示您输入用于指引的域，如图5-3所示。
+
+输入域 *attacker1.com*  作为DNS指引，它应该是您的负载指引所指向的域名。应该会看到一条消息，指示新侦听已经启动。在另一个 teamserver 重复此步骤，使用 DNS 2 和 *attacker2.com * 。在开始使用这两个监听前，需要编写一个中间服务器来检查DNS消息并适当地路由它们。本质上，这就是代理。
+
+<div align=center><img width = '924' height ='532' src ="https://github.com/YYRise/black-hat-go/raw/dev/ch-5/images/5-3.jpg"/></div>
+<center> 图 5-3: 添加DNS的指引域 </center>
+
