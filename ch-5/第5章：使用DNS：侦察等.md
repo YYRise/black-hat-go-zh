@@ -725,3 +725,223 @@ $ docker run --rm -it -p 2021:53 -p 50052:50050-v full path to cobalt strike dow
 <div align=center><img width = '924' height ='532' src ="https://github.com/YYRise/black-hat-go/raw/dev/ch-5/images/5-3.jpg"/></div>
 <center> 图 5-3: 添加DNS的指引域 </center>
 
+#### 创建DNS代理
+
+本章一直使用的DNS包使编写中间函数变得很容易，并且在之前的部分中也已经使用了几个函数。代理需要能做到下面几点：
+
+- 创建处理函数来获取输入的查询
+- 检查查询的问题并提取域名Inspect the question in the query and extract the domain name
+- 识别与域名相关的上游DNS服务器
+- 与上游DNS服务器交换问题，并将响应写入客户端
+
+可以编写处理程序函数来将attacker1.com和attacker2.com作为静态值处理，但这是不可维护的。相反，应该从程序外的资源中查找记录，例如数据库和配置文件。下面的代码通过使用 domain,server 的格式来实现，该格式列出了用逗号分隔的传入域和上游服务器。启动程序，创建函数来解析这种格式的文件。将清单5-6的代码保存到新文件 *main.go* 中。
+
+```go
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func parse(filename string) (map[string]string, error) {
+	records := make(map[string]string)
+	fh, err := os.Open(filename)
+	if err != nil {
+		return records, err
+	}
+	defer fh.Close()
+	scanner := bufio.NewScanner(fh)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.SplitN(line, ",", 2)
+		if len(parts) < 2 {
+			return records, fmt.Errorf("%s is not a valid line", line)
+		}
+		records[parts[0]] = parts[1]
+	}
+	return records, scanner.Err()
+}
+
+func main() {
+	records, err := parse("proxy.config")
+	if err != nil {
+		log.Fatalf("Error processing configuration file: %s\n", err.Error())
+	}
+    fmt.Printf("%+v\n", records)
+}
+
+```
+
+清单 5-6: DNS 代理 (https://github.com/blackhat-go/bhg/ch-5/dns_proxy/main.go/)
+
+这段代码中，首先定义一个函数，该函数解析包含配置信息的文件并返回一个map[string]string。使用map来查找输入的域和检索上游服务器。
+
+在终端窗口中输入下面代码的第一个命令，该命令将echo后的字符串写入到*proxy.config*文件中。接下来，编译并执行*dns_proxy.go。*
+
+```shell
+$ echo 'attacker1.com,127.0.0.1:2020\nattacker2.com,127.0.0.1:2021' > proxy.config 
+$ go build
+$ ./dns_proxy
+map[attacker1.com:127.0.0.1:2020 attacker2.com:127.0.0.1:2021]
+```
+
+看看输出了什么？是 teamserver 域名和 Cobalt Strike DNS 监听的端口组成的map。回想下将端口2020 和 2021分别映射到两个Docker容器中53端口。这是创建基本配置的一种快速而粗糙的方式，因为不必将其存储在数据库或其他持久存储机制中。
+
+使用定义的记录map，就可以编写处理函数了。来优化下代码，将下面代码添加到 main() 函数中。应该遵循配置文件的解析。
+
+```go
+dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
+		if len(req.Question) < 1 {
+			dns.HandleFailed(w, req)
+			return
+		}
+		name := req.Question[0].Name
+		parts := strings.Split(name, ".")
+		if len(parts) > 1 {
+			name = strings.Join(parts[len(parts)-2:], ".")
+		}
+		recordLock.RLock()
+		match, ok := records[name]
+		recordLock.RUnlock()
+		if !ok {
+			dns.HandleFailed(w, req)
+			return
+		}
+		resp, err := dns.Exchange(req, match)
+		if err != nil {
+			dns.HandleFailed(w, req)
+			return
+		}
+		if err := w.WriteMsg(resp); err != nil {
+			dns.HandleFailed(w, req)
+			return
+		}
+	})
+```
+
+首先，使用一个点号调用HandleFunc()来处理所有传入的请求，然后定义 *anonymous function* ，该函数不能复用（也没有名字）。当不打算重用代码块时，这是一种很好的设计。如果打算重用的话，应该声明它并将其作为 *named function*调用。接下来，检查输入的问题切片确保至少有一个值，如果不是的话，调用 `HandleFailed()` 及早地退出函数。这是整个处理程序中使用的模式。如果至少存在有一问题，可以安全地从第一个问题中取出查询的名字。必须用逗号分隔名字来提取域名。分隔名字返回的结果值应该永远不会不大于1，安全起见最后检查下。使用切片中 *slice* 操作可以抓取切片的 *tail* ——切片中最后一个元素。现在需要从记录map中检索上游服务器。
+
+从map中检索值能返回一个或两个变量。如果key（本例中是域名）存在map中的话会返回相应的值。如果不存在就返回空字符串。可以通过返回的值是否是空字符串判断，但是在处理复杂类型时这样是低效的。相反，使用两个变量：第一个是和key相应的值，第二个是Boolean值，如果存在返回true。在确保匹配之后，可以与上游服务器交换请求。只是确保在持久存储中配置了接收到的请求的域名。接下来，将来自上游服务器的响应写回客户端。定义处理函数后就可以起到服务了。最后，编译并启动代理。
+
+代理运行后就可以是使用两个 Cobalt Strike 监听来测试了。为此，首先创建两个无阶段的可执行文件。从 Cobalt Strike 的顶部菜单中，点击像齿轮的按钮，然后将输出更改为 **Windows Exe** 。在另一个 teamserver 重复此过程。将这些可执行文件复制到Windows VM并执行它们。Windows VM的DNS服务器应该是Linux主机的IP地址。否则的话不能测试。这可能需要一两个小时，但最终您应该会在每个teamserver上看到一个新的信标。任务完成!
+
+#### 收尾工作
+
+这已经很帮了，但是当必须更改 teamserver IP地址或重定向时，或者如果必须添加一条记录，都需要重启服务。信标可能会在这样的行动中幸存下来，但是当有更好的选择时，为什么还要去冒险呢？可以使用进程信号告诉运行中的程序重新加载配置文件。清单5-7是带有进程信号逻辑的完整程序：
+
+```go
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
+
+	"github.com/miekg/dns"
+)
+
+func parse(filename string) (map[string]string, error) {
+	records := make(map[string]string)
+	fh, err := os.Open(filename)
+	if err != nil {
+		return records, err
+	}
+	defer fh.Close()
+	scanner := bufio.NewScanner(fh)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.SplitN(line, ",", 2)
+		if len(parts) < 2 {
+			return records, fmt.Errorf("%s is not a valid line", line)
+		}
+		records[parts[0]] = parts[1]
+	}
+	log.Println("records set to:")
+	for k, v := range records {
+		fmt.Printf("%s -> %s\n", k, v)
+	}
+	return records, scanner.Err()
+}
+
+func main() {
+	var recordLock sync.RWMutex
+
+	records, err := parse("proxy.config")
+	if err != nil {
+		log.Fatalf("Error processing configuration file: %s\n", err.Error())
+	}
+
+	dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
+		if len(req.Question) < 1 {
+			dns.HandleFailed(w, req)
+			return
+		}
+		name := req.Question[0].Name
+		parts := strings.Split(name, ".")
+		if len(parts) > 1 {
+			name = strings.Join(parts[len(parts)-2:], ".")
+		}
+		recordLock.RLock()
+		match, ok := records[name]
+		recordLock.RUnlock()
+		if !ok {
+			dns.HandleFailed(w, req)
+			return
+		}
+		resp, err := dns.Exchange(req, match)
+		if err != nil {
+			dns.HandleFailed(w, req)
+			return
+		}
+		if err := w.WriteMsg(resp); err != nil {
+			dns.HandleFailed(w, req)
+			return
+		}
+	})
+
+	go func() {
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGUSR1)
+
+		for sig := range sigs {
+			switch sig {
+			case syscall.SIGUSR1:
+				log.Println("SIGUSR1: reloading records")
+				recordLock.Lock()
+				recordsUpdate, err := parse("proxy.config")
+				if err != nil {
+					log.Printf("Error processing configuration file: %s\n", err.Error())
+				} else {
+					records = recordsUpdate
+				}
+				recordLock.Unlock()
+			}
+		}
+	}()
+
+	log.Fatal(dns.ListenAndServe(":53", "udp", nil))
+}
+```
+
+清单 5-7: 完整的代理 (https://github.com/blackhat-go/bhg/ch-5/dns_proxy/main.go/)
+
+有一些补充。因为程序将修改一个可能被并发 goroutine 使用的map，要使用互斥锁来控制访问。*mutex*防止敏感代码块的并发执行，它允许任何 goroutine 读取数据而不会将其他的锁在外面，当写时会把其他的 goroutine 锁在外面。或者，在资源上实现没有互斥的goroutine会引入交叉，这可能导致竞争条件或更糟的情况。
+
+在处理函数中访问map前，先调用 RLock 来读取匹配的值；读取完成后再调用 RUnlock 来为下一个goroutine释放 map。在运行 goroutine 的匿名函数中，先处理监听的信号。使用 os.Signal 类型的管道来完成，在调用 signal.Notify() 时提供，以及预留的 SIGUSR1管道使用的文字信号。在遍历信号的循环中，使用 switch 语句来表明收到的信号类型。可以只配置监控单个的信号，但是在不久后就会更改，因此这是个恰当的设计模式。最后，在重新加载运行的配置前使用 Lock() 来阻塞读取记录 map 的 goroutine。使用 Unlock() 来继续执行。
+
+通过启动代理和在已存在的 teamserver中创建新的监听来测试程序。使用域名 *attacker3.com* 。代理运行后，在  *proxy.config* 文件中添加监听的域名。发送 kill 信号给进程来重新加载配置，但是要先使用ps 和 grep 来找出进程的 ID。
+
+```shell
+$ ps -ef | grep proxy 
+$ kill -10 PID
+```
+
+代理应该会重新加载。通过创建和执行一个新的无阶段的可执行文件来测试。代理现在应该具备了功能，并且可以生产了。
