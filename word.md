@@ -123,7 +123,7 @@ iterations
 
 ## ch-8
 
-| obfuscate | surface | deduce | specification | equivalent | To summarize |
-| --------- | ------- | ------ | ------------- | ---------- | ------------ |
-|           |         |        |               |            |              |
+| obfuscate | surface  | deduce           | specification | equivalent | To summarize |
+| --------- | -------- | ---------------- | ------------- | ---------- | ------------ |
+| sake      | optimize | Broadly speaking | innocent      |            |              |
 
