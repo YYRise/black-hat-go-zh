@@ -1,42 +1,11 @@
-vulnerable
+| vulnerable        | compromise | flaw | arbitrary | scenario | infrastructure |
+| ----------------- | ---------- | ---- | --------- | -------- | -------------- |
+| For demonstration | purposes   |      |           |          |                |
+| payload           |            |      |           |          |                |
 
-compromise
-
-flaw
-
-arbitrary
-
-scenario
-
-infrastructure
-
-For demonstration purposes
-
-payload
-
-out of the way
-
-We’ll get to that in a minute. 
-
-What gives?
-
-We have a lot to cover here. 
-
-essentially
-
-malicious
-
-In short
-
-Pretty slick!
-
-individual
-
-filling out
-
-potentially
-
-multiplexing
+| out of the way | We’ll get to that in a minute. | What gives? | We have a lot to cover here. | essentially | malicious                                                    |
+| :------------- | ------------------------------ | ----------- | ---------------------------- | ----------- | ------------------------------------------------------------ |
+|                |                                |             |                              |             | \| In short \| Pretty slick! \| individual \| filling out \| potentially \| multiplexing \| |
 
 If you’re new to it, 
 
@@ -57,8 +26,6 @@ First off,
 rudimentary
 
 take it up a notch
-
-
 
 exfiltration
 
@@ -151,3 +118,9 @@ digestible
 enterprise
 
 covertly
+
+iterations
+
+## ch-8
+
+| obfuscate | surface | deduce
