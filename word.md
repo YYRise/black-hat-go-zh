@@ -125,5 +125,5 @@ iterations
 
 | obfuscate | surface  | deduce           | specification | equivalent | To summarize |
 | --------- | -------- | ---------------- | ------------- | ---------- | ------------ |
-| sake      | optimize | Broadly speaking | innocent      |            |              |
+| sake      | optimize | Broadly speaking | innocent      | exploit    |              |
 
