@@ -123,4 +123,4 @@ iterations
 
 ## ch-8
 
-| obfuscate | surface | deduce
+| obfuscate | surface | deduce | specification | 
