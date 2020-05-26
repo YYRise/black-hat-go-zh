@@ -127,3 +127,7 @@ iterations
 | --------- | -------- | ---------------- | ------------- | ---------- | ------------ |
 | sake      | optimize | Broadly speaking | innocent      | exploit    |              |
 
+## ch-10
+
+| practitioner | cumbersome | evolution | involvement | massive | vulnerability | explicitly | 
+
