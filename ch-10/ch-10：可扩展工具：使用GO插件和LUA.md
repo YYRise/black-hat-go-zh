@@ -4,3 +4,26 @@
 
 在本章中，将用Go创建两个漏洞扫描器扩展。首先，使用本地Go插件系统并显式地将代码编译为共享对象。然后，使用嵌入的Lua系统重新构建相同的插件，该系统比本地Go插件系统更早。记住，与用其他语言(如Java和Python)创建插件不同，在Go中创建插件是一个相当新的构造。本地支持插件从Go版本1.8开始。而且，直到版本1.10才可以将这些插件创建为Windows动态链接库(DLLs)。确保使用最新颁布的Go，以便本章中的例子可以正常运行。
 
+## 使用Go本地插件系统
+
+Go在版本1.8之前，不支持插件或动态运行时代码可扩展性。虽然像Java这样的语言允许执行程序来实例化导入的类型并调用它们的函数时加载类或JAR文件，但是Go没有提供这样的奢侈。虽然有时可以通过接口实现来扩展功能，但是不能真正动态地加载和执行代码本身。相反，需要在编译期时正确地包含它。作为一个例子，无法复制这里显示的Java功能，它从一个文件动态加载一个类，实例化类，并在实例上调用 `someMethod()` ：
+
+```java
+File file = new File("/path/to/classes/");
+URL[] urls = new URL[]{file.toURL()};
+ClassLoader cl = new URLClassLoader(urls);
+Class clazz = cl.loadClass("com.example.MyClass"); clazz.getConstructor().newInstance().someMethod();
+```
+
+幸运的是，Go的新版本能够模拟这一功能，允许开发人员显式地编译代码以作为插件使用。具体来说，在版本1.10之前，插件系统只能在Linux上工作，因此必须在Linux上部署可扩展框架。Go的插件是在构建过程中作为共享对象创建的。要生成共享对象，输入以下构建命令，该命令将 `plugin` 提供给 `buildmode` 选项：
+
+```shell
+$ go build -buildmode=plugin
+```
+
+或者，要构建Windows DLL，使用 `c-shared` 作为 `buildmode` 选项:
+
+```shell
+$ go build -buildmode=c-shared
+```
+

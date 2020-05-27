@@ -129,5 +129,5 @@ iterations
 
 ## ch-10
 
-| practitioner | cumbersome | evolution | involvement | massive | vulnerability | explicitly | 
+| practitioner | cumbersome | evolution | involvement | massive | vulnerability | explicitly | luxury |
 
