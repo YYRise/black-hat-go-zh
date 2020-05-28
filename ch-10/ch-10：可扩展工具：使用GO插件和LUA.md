@@ -27,3 +27,11 @@ $ go build -buildmode=plugin
 $ go build -buildmode=c-shared
 ```
 
+要构建Windows DLL，您的程序必须满足某些导出函数的约定，还必须导入C库。我们让您自己探索这些细节。在本章中，我们只关注Linux插件的变体，因为我们将在第12章演示如何加载和使用 DLL。
+
+在编译到DLL或共享对象之后，一个单独的程序可以在运行时加载和使用插件。可以访问任何导出的函数。使用Go的插件包可以与共享对象的导出功能交互。包中的功能简单明了。要使用插件，请按照下列步骤：
+
+1. 调用 `plugin.Open(filename string) 来打开共享对象文件， 创建  `plugin.Plugin` 实例。
+2.  `plugin.Plugin` 调用 `Lookup(symbolName string)` 通过名字来检索 Symbol （这是导出函数的变体）。
+3. 使用类型断言将泛型的 Symbol 转换为程序期望的类型。
+4. 根据需要使用转换后的结果对象。
