@@ -41,3 +41,40 @@ $ go build -buildmode=c-shared
 在下面的示例中，期望插件定义一个名为 `New()` 的导出函数，该函数返回特定的接口类型。这样，就可以对引导过程进行标准化。将句柄返回到接口能够以可预料的方式调用对象上的函数。
 
 现在开始创建可插拔的漏洞扫描器。每个插件实现单个检测逻辑。主扫描器代码将通过从文件系统上的单个目录中读取插件来启动处理。要使这一切正常运行，将使用两个独立的存储库:一个用于插件，另一个用于使用插件的主程序。
+
+### 创建主程序
+
+从主程序开始，在其上添加插件。这有助于理解创建插件过程。设置存储库的目录结构，如下显示：
+
+```shell
+$ tree 
+.
+--- cmd
+	--- scanner
+		--- main.go
+--- plugins
+--- scanner
+	--- scanner.go
+```
+
+*cmd/scanner/main.go* 文件是命令行工具。它加载插件并启动扫描。*plugins* 目录包含动态加载的所有共享对象，以调用各种漏洞签名检查。 *scanner/scanner.go* 文件中定义插件和主扫描器使用的数据类型。将数据存放在自己的包中更易用些。
+
+清单10-1是 *scanner.go* 文件的内容。
+
+```go
+package scanner
+
+// Scanner defines an interface to which all checks adhere 
+type Checker interface {
+	Check(host string, port uint64) *Result 
+}
+// Result defines the outcome of a check 
+type Result struct {
+    Vulnerable bool
+    Details    string
+}
+```
+
+清单 10-1: 定义核心扫描器类型 (https://github.com/blackhat-go/bhg/ch-10/plugin-core/scanner/scanner.go/)
+
+在这个名为 *scanner* 的包中定义了两个类型。第一个是 `Checker` 接口。该接口定义了 `Check()` 这一个方法，参数为 `host` 和 `port`，返回值为 `Result` 指针。`Result` 类型被定义为 `struct`。其目的是追踪检查的结果。服务易受攻击吗?在记录、验证或利用缺陷时，哪些细节是相关的?

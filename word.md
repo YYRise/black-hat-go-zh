@@ -131,7 +131,7 @@ iterations
 
 | practitioner | cumbersome  | evolution | involvement | massive     | vulnerability | explicitly | luxury | convention |
 | ------------ | ----------- | --------- | ----------- | ----------- | ------------- | ---------- | ------ | ---------- |
-| exclusively  | demonstrate | variant   | adhere      | predictable |               |            |        |            |
+| exclusively  | demonstrate | variant   | adhere      | predictable | validating    |            |        |            |
 
 
 
