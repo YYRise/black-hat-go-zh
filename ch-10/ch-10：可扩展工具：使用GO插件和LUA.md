@@ -78,3 +78,53 @@ type Result struct {
 清单 10-1: 定义核心扫描器类型 (https://github.com/blackhat-go/bhg/ch-10/plugin-core/scanner/scanner.go/)
 
 在这个名为 *scanner* 的包中定义了两个类型。第一个是 `Checker` 接口。该接口定义了 `Check()` 这一个方法，参数为 `host` 和 `port`，返回值为 `Result` 指针。`Result` 类型被定义为 `struct`。其目的是追踪检查的结果。服务易受攻击吗?在记录、验证或利用缺陷时，哪些细节是相关的?
+
+将接口视为某种契约或蓝图；插件随意实现 `Check()` 函数，只要返回 `Result` 指针。插件实现的逻辑基于每个插件的漏洞检查逻辑。例如，检查Java反序列化问题的插件可以实现适当的HTTP调用，而检查默认SSH凭据的插件可以对SSH服务发起密码猜测攻击。这就是抽象的力量！
+
+接下来，回顾一下 *cmd/scanner/main.go 。该文件中使用插件(清单10-2)。
+
+```go
+const PluginsDir = "../../plugins/"
+
+func main() {
+	var (
+		files []os.FileInfo
+		err   error
+		p     *plugin.Plugin
+		n     plugin.Symbol
+		check scanner.Checker
+		res   *scanner.Result
+	)
+	if files, err = ioutil.ReadDir(PluginsDir); err != nil {
+		log.Fatalln(err)
+	}
+
+	for idx := range files {
+		fmt.Println("Found plugin: " + files[idx].Name())
+		if p, err = plugin.Open(PluginsDir + "/" + files[idx].Name()); err != nil {
+			log.Fatalln(err)
+		}
+
+		if n, err = p.Lookup("New"); err != nil {
+			log.Fatalln(err)
+		}
+
+		newFunc, ok := n.(func() scanner.Checker)
+		if !ok {
+			log.Fatalln("Plugin entry point is no good. Expecting: func New() scanner.Checker{ ... }")
+		}
+		check = newFunc()
+		res = check.Check("10.0.1.20", 8080)
+		if res.Vulnerable {
+			log.Println("Host is vulnerable: " + res.Details)
+		} else {
+			log.Println("Host is NOT vulnerable")
+		}
+	}
+}
+```
+
+清单 10-2: 运行插件的扫描器客户端 (https://github.com/blackhat-go/bhg/ch-10/plugin-core/cmd/scanner/main.go/)
+
+代码从定义插件所在的位置开始。这种情况下使用的是硬编码。当然也可以改进代码，从参数或环境变量中读入该值。使用该变量调用 `ioutil.ReadDir(PluginDir)` 来获取文件列表，然后再遍历插件文件。对每个文件，使用Go的 `plugin` 包通过调用 `plugin.Open()` 来读取插件。如果成功的话，就会有一个 `*plugin.Plugin` 实例，将该实例赋值给变量 `p` 。调用 `p.Lookup("New")` 来查找符号名为 `New` 的插件。
+
