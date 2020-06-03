@@ -211,3 +211,23 @@ func New() scanner.Checker {
 由于期望返回 `*scanner.Result` ，初始化，并将其赋值给名为 `res` 的变量。如果条件满足——即，如果检查验证了可猜测的凭证，则确认了漏洞，将 `res.Vulnerable` 设置为 `true`，将 `res.Details` 设置为含有可识别的凭证的消息。如果漏洞不是可识别的，那么返回的实例的 `res.Vulnerable` 将被设置为默认的状态——`false` 。
 
 最后，定义了需要导出的函数 `New() *scanner .Checker`。这符合扫描器调用 `Lookup()` 所设置的预期，以及实例化插件定义的`TomcatChecker` 所需要的类型断言和转换。这个基本入口点只是返回一个新的 `*TomcatChecker`（由于其实现了所必须的 `Check() 方法，因此恰好是一个 `scanner.Checker`）。
+
+### 运行扫描器
+
+既然已经创建了插件和使用它的主程序，那就编译插件，使用-o选项将编译后的共享对象定向到扫描程序的插件目录：
+
+```shell
+$ go build -buildmode=plugin -o /path/to/plugins/tomcat.so
+```
+
+然后运行扫描器 （cmd/scanner/main.go）来确认它能识别出插件，加载插件，并且执行插件的 `Check()` 方法：
+
+```shell
+$ go run main.go
+Found plugin: tomcat.so
+2020/01/15 15:45:18 Checking for Tomcat Manager...
+2020/01/15 15:45:18 Host responded to /manager/html request
+2020/01/15 15:45:18 Host requires authentication. Proceeding with password guessing... 2020/01/15 15:45:18 Host is vulnerable: Valid credentials found - tomcat:tomcat
+```
+
+能看到上面的输出吗？成功了！扫描器能够调用插件中的代码。可以在插件的目录中放入任意的插件了。扫描器能够尝试读取每个插件并启动漏洞检查功能。
