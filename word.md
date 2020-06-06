@@ -129,10 +129,10 @@ iterations
 
 ## ch-10
 
-| practitioner | cumbersome  | evolution | involvement | massive     | vulnerability |
-| ------------ | ----------- | --------- | ----------- | ----------- | ------------- |
-| exclusively  | demonstrate | variant   | adhere      | predictable | validating    |
-| kick off     |             |           |             |             |               |
+| practitioner | cumbersome  | evolution   | involvement | massive     | vulnerability |
+| ------------ | ----------- | ----------- | ----------- | ----------- | ------------- |
+| exclusively  | demonstrate | variant     | adhere      | predictable | validating    |
+| kick off     | forewarned  | portability |             |             |               |
 
 
 
