@@ -132,7 +132,7 @@ iterations
 | practitioner | cumbersome  | evolution   | involvement | massive                       | vulnerability |
 | ------------ | ----------- | ----------- | ----------- | ----------------------------- | ------------- |
 | exclusively  | demonstrate | variant     | adhere      | predictable                   | validating    |
-| kick off     | forewarned  | portability | implicit    | For the sake of sim- plicity, |               |
+| kick off     | forewarned  | portability | implicit    | For the sake of sim- plicity, | accommodate   |
 
 
 

@@ -261,3 +261,44 @@ $ go get github.com/yuin/gopher-lua
 在这个练习期间，加载和运行插件的引导核心Go代码保存在单个文件中。为了简单起见，我们特别删除了 *https://github.com/yuin/gopher-lua/* 示例中使用的一些模式。我们觉得一些模式（像使用用户定义的类型）降低了代码的可读性。在实际的实现中，为了更好的灵活性，更可能希望加入这些模式。同样也想加入大量的错误和类型检查。
 
 主程序定义函数来发布 GET 和 HEAD HTTP 请求，使用Lua虚拟机（VM）注册这些函数，然后从已定义的插件目录中加载并执行Lua脚本。构建和上一节一样的 Tomcat 密码猜测插件，所以能够比较这两个版本。
+
+### 创建 **head() HTTP** 函数
+
+从主程序开始。首先来看下 head() HTTP 函数，该函数对 Go的 `net/http` 包的调用进行了封装（清单10-4）。
+
+```go
+func head(l *lua.LState) int {
+	var (
+		host string
+		port uint64
+		path string
+		resp *http.Response
+		err  error
+		url  string
+	)
+	host = l.CheckString(1)
+	port = uint64(l.CheckInt64(2))
+	path = l.CheckString(3)
+	url = fmt.Sprintf("http://%s:%d/%s", host, port, path)
+	if resp, err = http.Head(url); err != nil {
+		l.Push(lua.LNumber(0))
+		l.Push(lua.LBool(false))
+		l.Push(lua.LString(fmt.Sprintf("Request failed: %s", err)))
+		return 3
+	}
+	l.Push(lua.LNumber(resp.StatusCode))
+	l.Push(lua.LBool(resp.Header.Get("WWW-Authenticate") != ""))
+	l.Push(lua.LString(""))
+	return 3
+}
+```
+
+清单 10-4: 创建Lua使用的 *head()* 函数 (https://github.com/blackhat-go/bhg /ch-10/lua-core/cmd/scanner/main.go/)
+
+首先要注意的是，`head()` 函数的参数为 `lua.LState` 对象的指针，且返回一个 `int` 值。这是希望向Lua VM注册的任何函数的预期签名。`lua.LState` 维护VM的运行状态，包括从Go传给Lua的参数和返回值，一会就能看到。因为返回值在`lua.LState` 实例中，`int` 类型表示返回值的数量。这样，Lua 插件就能够读取和使用返回值。
+
+因为 `lua.LState` 对象 `l` 中包含传入到函数中的参数，通过调用 `l.CheckString()` 和 `l.CheckInt64()` 读取数据。（尽管本例中不需要，但是其他Check*函数存在容纳其他预期的数据类型。这些函数接收一个充当参数索引的整数值。和Go的切片索引从0开始的不一样，Lua的索引从1开始。因此，调用 `l.CheckString(1)` 获取的是第一个参数，本例中期望是string类型。为每一个期望的参数这样操作，使用期望值的合适的索引。对于head()` 函数，Lua调用 `head(host, port, path)`，该函数的参数 `host` 和 `path` 是字符串类型，`port` 是整数类型。在更灵活的实现中，需要在这里进行额外的检查，以确保提供的数据是有效的。
+
+该函数继续发出HTTP HEAD 请求和执行以下错误检查。为了给Lua的调用者返回值，通过调用 `l.Push()` 将值压栈到 `lua.LState` 中，并向其传递一个满足 `lua.LValue` 接口类型的对象。`gopher-lua` 包中有几种实现该接口的类型，例如，只需调用 `lua.Number(0)` 和`lua.Bool(false)` 就能创建数值和布尔返回类型。
+
+本例中返回3个值。第一个是HTTP状态码，第二个是确定是否服务器需要基础认证，第三个是错误信息。如果有错误时就将状态码设置为0。然后返回3，表示压栈到 LState 中的元素数量。如果调用 `http.Head() ` 没有错误，将返回值即有效的状态码压栈到 LState，然后检查基础认证后返回3。
