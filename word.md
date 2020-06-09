@@ -129,10 +129,11 @@ iterations
 
 ## ch-10
 
-| practitioner | cumbersome  | evolution   | involvement | massive                       | vulnerability |
-| ------------ | ----------- | ----------- | ----------- | ----------------------------- | ------------- |
-| exclusively  | demonstrate | variant     | adhere      | predictable                   | validating    |
-| kick off     | forewarned  | portability | implicit    | For the sake of sim- plicity, | accommodate   |
+| practitioner    | cumbersome  | evolution   | involvement | massive                       | vulnerability |
+| --------------- | ----------- | ----------- | ----------- | ----------------------------- | ------------- |
+| exclusively     | demonstrate | variant     | adhere      | predictable                   | validating    |
+| kick off        | forewarned  | portability | implicit    | For the sake of sim- plicity, | accommodate   |
+| Other than that | oddly       | Likewise    | endeavor    | significant                   |               |
 
 
 

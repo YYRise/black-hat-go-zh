@@ -302,3 +302,59 @@ func head(l *lua.LState) int {
 该函数继续发出HTTP HEAD 请求和执行以下错误检查。为了给Lua的调用者返回值，通过调用 `l.Push()` 将值压栈到 `lua.LState` 中，并向其传递一个满足 `lua.LValue` 接口类型的对象。`gopher-lua` 包中有几种实现该接口的类型，例如，只需调用 `lua.Number(0)` 和`lua.Bool(false)` 就能创建数值和布尔返回类型。
 
 本例中返回3个值。第一个是HTTP状态码，第二个是确定是否服务器需要基础认证，第三个是错误信息。如果有错误时就将状态码设置为0。然后返回3，表示压栈到 LState 中的元素数量。如果调用 `http.Head() ` 没有错误，将返回值即有效的状态码压栈到 LState，然后检查基础认证后返回3。
+
+### 创建 **get()** 函数
+
+接下来创建 `get()` 函数，像前面例子那样封装 `net/http package` 的函数。但是，在这种情况下要发出HTTP GET请求。除此之外，通过向目标端点发出HTTP请求， `get()` 函数使用和 `head()` 函数相似的结构。键入清单10-5中的代码。
+
+```go
+func get(l *lua.LState) int {
+	var (
+		host     string
+		port     uint64
+		username string
+		password string
+		path     string
+		resp     *http.Response
+		err      error
+		url      string
+		client   *http.Client
+		req      *http.Request
+	)
+	host = l.CheckString(1)
+	port = uint64(l.CheckInt64(2))
+	username = l.CheckString(3)
+	password = l.CheckString(4)
+	path = l.CheckString(5)
+	url = fmt.Sprintf("http://%s:%d/%s", host, port, path)
+	client = new(http.Client)
+	if req, err = http.NewRequest("GET", url, nil); err != nil {
+		l.Push(lua.LNumber(0))
+		l.Push(lua.LBool(false))
+		l.Push(lua.LString(fmt.Sprintf("Unable to build GET request: %s", err)))
+		return 3
+	}
+	if username != "" || password != "" {
+		// Assume Basic Auth is required since user and/or password is set
+		req.SetBasicAuth(username, password)
+	}
+	if resp, err = client.Do(req); err != nil {
+		l.Push(lua.LNumber(0))
+		l.Push(lua.LBool(false))
+		l.Push(lua.LString(fmt.Sprintf("Unable to send GET request: %s", err)))
+		return 3
+	}
+	l.Push(lua.LNumber(resp.StatusCode))
+	l.Push(lua.LBool(false))
+	l.Push(lua.LString(""))
+	return 3
+}
+```
+
+清单 10-5: 创建Lua使用的 *get()* 函数 (https://github.com/blackhat-go/bhg/ch-10/lua-core/cmd/scanner/main.go/)
+
+和 `head()` 的实现非常类似，`get()` 函数也返回3个值：状态码，表示要访问的系统是否需要基本身份验证的值，错误信息。这两个函数唯一不同的地方是，`get()` 接受额外的两个字符串参数：用户名和密码。如果有一个不为空字符串，就假定必须执行基础认证。
+
+现在，可能会认为实现有些奇怪，几乎一点也不符合插件系统的灵活性，复用性，可移植性。这些函数似乎是针对非常特定的用例而设计的——即，对基础认证的检查——而不是通用的目的。毕竟，为什么不返回响应体或HTTP头？同样地，例如，为什么不接受更鲁棒的参数设置cookie，其他的HTTP头，或者发送带有body的POST请求？
+
+答案是 *Simplicity* 。该实现可作为构建更强大的解决方案的起点。但是，创建该解决方案是一项更有意义的努力，并且可能在过多的关注实现细节时失去代码的目的。相反，选择以更基础的，更不灵活的方式来实现，以使一般的、基础的概念更容易理解。改进的实现可能暴露出复杂的用户定义类型，这些类型可以更好地表示例如 `http.Request` 和 `http.Response` 类型的整体。然后，可以简化函数签名，减少接受和返回的参数的数量，而不是从Lua接受并返回多个参数。我们鼓励将此挑战作为练习来完成，将代码更改为接受和返回用户定义的结构，而不是原始类型。
