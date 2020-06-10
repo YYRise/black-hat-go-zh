@@ -380,3 +380,38 @@ func register(l *lua.LState) {
 然后在元表中注册了全局名称 `http` 。这使得http隐式包名对 **Lua VM** 可用。在同一个元表中，同样通过调用 `l.SetField()` 注册两个字段。这就是定义的两个在 `http` 命名空间下可用的静态函数 `head()` 和 `get()` 。由于它们是静态的，在Lua中可以直接通过 `http.get() 和 http .head()` 调用它们，而不用创建 `http` 类型的实例。
 
 正如在 `SetField()` 调用中注意到的那样，第三个参数是处理Lua调用的目标函数。在本例中是前面已经实现了的 `get()` 和 `head()` 函数。它们被封装在对 `l.NewFunction()` 的调用中，该函数参数为 `func(*LState) int` 形式的函数， 这就是定义`get()`和`head()`函数的形式。它们返回 `*lua.LFunction` 。由于介绍了许多数据类型，并且您可能不熟悉gopher-lua，所以这可能有点让人不知所措。只需明白一点，该函数注册全局命名空间和函数名称，并在这些函数名称和Go函数之间创建映射。
+
+### 编写**Main**函数
+
+最后创建 `main()` 函数，该函数将协调注册过程并执行该插件（清单 10-7）。
+
+```go
+const PluginsDir = "../../plugins"
+
+func main() {
+	var (
+		l     *lua.LState
+		files []os.FileInfo
+		err   error
+		f     string
+	)
+	l = lua.NewState()
+	defer l.Close()
+	register(l)
+	if files, err = ioutil.ReadDir(PluginsDir); err != nil {
+		log.Fatalln(err)
+	}
+
+	for idx := range files {
+		fmt.Println("Found plugin: " + files[idx].Name())
+		f = fmt.Sprintf("%s/%s", PluginsDir, files[idx].Name())
+		if err := l.DoFile(f); err != nil {
+			log.Fatalln(err)
+		}
+	}
+}
+```
+
+清单 10-7: 注册并调用 Lua 插件 (https://github.com/blackhat-go/bhg/ch-10/lua-core/cmd/scanner/main.go/)
+
+如同在Go的例子中的 `main()` 函数，硬编码了加载插件的路径。在 `main()` 函数中，调用 `lua.NewState()` 创建 ` *lua.LState` 实例。`lua.NewState()` 实例是设置Lua VM的关键项，注册函数和类型，并且执行任意的Lua脚本。然后将该指针传递给之前创建的 `register()` 函数，该函数在状态上注册自定义的http名称空间和函数。读取插件目录中的内容，循环遍历目录的每一个文件。对每一个文件调用 `l.DoFile(f)` ，`f` 是文件的绝对路径。这个调用在注册自定义类型和函数的Lua状态中执行文件的内容。本质上，`DoFile()` 是`gopher-lua` 执行整个文件的方式，就好像执行独立的Lua脚本一样。
