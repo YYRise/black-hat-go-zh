@@ -358,3 +358,25 @@ func get(l *lua.LState) int {
 现在，可能会认为实现有些奇怪，几乎一点也不符合插件系统的灵活性，复用性，可移植性。这些函数似乎是针对非常特定的用例而设计的——即，对基础认证的检查——而不是通用的目的。毕竟，为什么不返回响应体或HTTP头？同样地，例如，为什么不接受更鲁棒的参数设置cookie，其他的HTTP头，或者发送带有body的POST请求？
 
 答案是 *Simplicity* 。该实现可作为构建更强大的解决方案的起点。但是，创建该解决方案是一项更有意义的努力，并且可能在过多的关注实现细节时失去代码的目的。相反，选择以更基础的，更不灵活的方式来实现，以使一般的、基础的概念更容易理解。改进的实现可能暴露出复杂的用户定义类型，这些类型可以更好地表示例如 `http.Request` 和 `http.Response` 类型的整体。然后，可以简化函数签名，减少接受和返回的参数的数量，而不是从Lua接受并返回多个参数。我们鼓励将此挑战作为练习来完成，将代码更改为接受和返回用户定义的结构，而不是原始类型。
+
+### 向Lua VM注册函数
+
+到现在为止，已经围绕要使用的必要 `net/http` 调用实现了封装函数，并创建了这些函数，以便 `gopher-lua` 可以使用它们。但是，实际上需要向Lua VM注册这些函数。清单10-6中是集中注册处理函数。
+
+```go
+const LuaHttpTypeName = "http"
+func register(l *lua.LState) {
+	mt := l.NewTypeMetatable(LuaHttpTypeName) wl.SetGlobal("http", mt)
+	// static attributes
+	l.SetField(mt, "head", l.NewFunction(head))
+	l.SetField(mt, "get", l.NewFunction(get)) 
+}
+```
+
+清单 10-6: 向 Lua 注册插件 (https://github.com/blackhat-go/bhg/ch-10/lua-core/cmd/scanner/main.go/)
+
+首先定义惟一地标识在Lua中创建的命名空间的常量。在本例中，使用的是 `http`，因为这实际上是要暴露的功能。在 `register()` 函数中，接受一个 `lua.LState` 指针，使用命名空间常量通过调用 `l.NewTypeMetatable()` 创建一个新的Lua类型。使用这个元表来跟踪Lua可用的类型和函数。
+
+然后在元表中注册了全局名称 `http` 。这使得http隐式包名对 **Lua VM** 可用。在同一个元表中，同样通过调用 `l.SetField()` 注册两个字段。这就是定义的两个在 `http` 命名空间下可用的静态函数 `head()` 和 `get()` 。由于它们是静态的，在Lua中可以直接通过 `http.get() 和 http .head()` 调用它们，而不用创建 `http` 类型的实例。
+
+正如在 `SetField()` 调用中注意到的那样，第三个参数是处理Lua调用的目标函数。在本例中是前面已经实现了的 `get()` 和 `head()` 函数。它们被封装在对 `l.NewFunction()` 的调用中，该函数参数为 `func(*LState) int` 形式的函数， 这就是定义`get()`和`head()`函数的形式。它们返回 `*lua.LFunction` 。由于介绍了许多数据类型，并且您可能不熟悉gopher-lua，所以这可能有点让人不知所措。只需明白一点，该函数注册全局命名空间和函数名称，并在这些函数名称和Go函数之间创建映射。
