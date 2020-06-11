@@ -452,3 +452,21 @@ end
 第一个调用 ` http.head("10.0.1.20", 8080, "/manager/html")` 。根据在状态元表上的全局和字段注册，可以对 `http.head()` 函数发出调用，而不会收到Lua错误。另外，提供了 `head()` 函数从 `LState` 实例读取的三个参数。Lua调用需要三个返回值，它们与退出Go函数之前压栈到 `LState` 的数字和类型一致。
 
 第二个是调用 `http.get()` ，和调用 `http.head()` 相似。唯一不同的地方是传递用户名和密码给 `http.get()` 函数。如果参考用Go实现的 `get()` 函数，也是从 `LState` 实例中读取这两个额外的字符串。
+
+### 测试Lua插件
+
+这个示例并不完美，可以从其他设计注意事项获得好处。但是，与大多数攻击工具一样，最重要的是它可以工作并解决问题。运行代码证明它确实可以按预期工作：
+
+```shell
+$ go run main.go
+Found plugin: tomcat.lua
+[+] Endpoint requires Basic Auth. Proceeding with password guessing 
+[+] Found creds - tomcat:tomcat
+```
+
+现在有了一个基本的工作示例，我们鼓励您通过实现用户定义的类型来改进代码，以便不用在函数间传递冗长的参数列表。这样的话，可能需要暴露注册结构体实例的方法，是否在Lua中设置和获取值，或者用于在特定的实例上调用方法。当完成这些工作时，会注意到代码会变得更复杂，这是因为以Lua友好的方式封装了大量的Go的功能。
+
+
+
+
+
