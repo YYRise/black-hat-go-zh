@@ -121,6 +121,15 @@ covertly
 
 iterations
 
+## ch-7
+
+| tangible | thrilling | lucrative prize | approximately | estimates |      |
+| -------- | --------- | --------------- | ------------- | --------- | ---- |
+|          |           |                 |               |           |      |
+|          |           |                 |               |           |      |
+
+
+
 ## ch-8
 
 | obfuscate | surface  | deduce           | specification | equivalent | To summarize |
@@ -136,6 +145,8 @@ iterations
 | Other than that | oddly                         | Likewise    | endeavor    | significant                   | Up to this point |
 | implicit        | overwhelming                  | coordinate  | arbitrary   | highlighted                   | adversarial      |
 | decisions       | you must consider trade-offs. | tackle      | demonstrate |                               |                  |
+
+
 
 
 
