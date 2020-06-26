@@ -123,10 +123,10 @@ iterations
 
 ## ch-7
 
-| tangible  | thrilling | lucrative prize | approximately | estimates | compromise |
-| --------- | --------- | --------------- | ------------- | --------- | ---------- |
-| in no way | moral     | juicy           | indicator     |           |            |
-|           |           |                 |               |           |            |
+| tangible  | thrilling | lucrative prize | approximately | estimates    | compromise |
+| --------- | --------- | --------------- | ------------- | ------------ | ---------- |
+| in no way | moral     | juicy           | indicator     | In the event | disposable |
+|           |           |                 |               |              |            |
 
 
 
