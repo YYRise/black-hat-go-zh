@@ -14,3 +14,21 @@ SMB还有其他几个有趣的用例，特别是由于它处理NT LAN Manager (N
 
 虽然我们构建的SMB库只允许基本的客户端通信，但代码库相当广泛。会有SMB包相关的例子，以便能完全理解像SMB认证这样的通信和任务是如何工作的。
 
+## 理解SMB
+
+和HTTP一样，SMB属于应用层的协议，可以和其他网络节点通信。不像HTTP 1.1那样使用可读的ASCII文本，SMB是一种二进制协议，它结合了固定长度和可变长度、位置和小端字段。SMB有几个版本，也称为方言，即版本2.0、2.1、3.0、3.0.2和3.1.1。每种方言都比其前身表现得更好。由于处理和需求因方言的不同而不同，因此客户端和服务器必须提前就使用哪种方言达成一致。在初始信息交换期间执行此操作。
+
+通常，Windows系统支持多种方言，并选择服务端和客户端都支持的最新的方言。Microsoft提供了表6-1，列出了在协商期间Windows版本选择的方言。（Windows 10和WS 2016(图中没有显示)协商SMB 3.1.1版本。）
+
+表6-1：由Windows版本协商的Smb方言
+
+| Operating system       | Windows 8.1 WS 2012 R2 | Windows 8 WS 2012 | Windows 7 WS 2008 R2 | Windows Vista WS 2008 | Previous versions |
+| ---------------------- | ---------------------- | ----------------- | -------------------- | --------------------- | ----------------- |
+| Windows 8.1 WS 2012 R2 | **SMB 3.02**           | **SMB 3.0**       | SMB 2.1              | SMB 2.0               | SMB 1.0           |
+| Windows 8 WS 2012      | **SMB 3.0**            | **SMB 3.0**       | SMB 2.1              | SMB 2.0               | SMB 1.0           |
+| Windows 7 WS 2008 R2   | SMB 2.1                | SMB 2.1           | SMB 2.1              | SMB 2.0               | SMB 1.0           |
+| Windows Vista WS 2008  | SMB 2.0                | SMB 2.0           | SMB 2.0              | SMB 2.0               | SMB 1.0           |
+| Previous versions      | SMB 1.0                | SMB 1.0           | SMB 1.0              | SMB 1.0               | SMB 1.0           |
+
+本章使用SMB 2.1方言，因为多数现代 Windows版本支持。
+
