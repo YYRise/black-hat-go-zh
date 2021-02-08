@@ -1,6 +1,5 @@
-、
-
 ## 摘要
+
 在第2章中，您学习了如何用TCP创建可用的客户端和服务器。本章是探讨 OSI 模型较高层上的各种协议的第一章。
 基于网络中的广泛性，宽松的出口控制联系，一般的灵活性，就先从HTTP开始。
 
@@ -43,7 +42,7 @@ r3, err = http.Post(
 )
 // Read response body. Not shown. 
 defer r3.Body.Close()
-```
+ ```
 <center> 代码 3-1: Get(), Head(), 和 Post() 函数的示例 (https://github.com/blackhat-go/bhg
 /ch-3/basic/main.go/) </center>
 
@@ -886,7 +885,7 @@ func (a *OfficeAppProperty) GetMajorVersion() string {
 代码 3-20: 定义Open XML 类型和版本映射 (https://github.com/blackhat-go/bhg/ch-3/bing-metadata/metadata/openxml.go/)
 
 定义 `OfficeCoreProperty` 和 `OfficeAppProperty` 类型后，再定义`map`类型的`OfficeVersions`，用于维护主版本号和可识别发布年份间的关系。为使用该map，在 `OfficeAppProperty`类型上定义了`GetMajorVersion()`方法。该方法分割XML数据的`AppVersion`值来检索主版本号，然后使用该值在`OfficeVersions`检索出发布的年份。
- 
+
  ### 将数据映射到结构体
  现在已经构建了处理和检查关注的XML数据的逻辑和类型，是时候写代码来读取文件并将内容赋值给结构体了。为此，定义`NewProperties()`和`process()`函数，如代码 3-21。
  ```go
@@ -922,7 +921,7 @@ func NewProperties(r *zip.Reader) (*OfficeCoreProperty, *OfficeAppProperty, erro
 	}
 	return &coreProps, &appProps, nil
 }
-```
+ ```
 代码 3-21: 处理开放的XML归档文件和嵌入的XML文档 (https://github.com/blackhat-go/bhg/ch-3/bing-metadata/metadata/openxml.go/)
 
 `NewProperties()`函数接收`*zip.Render`，表示ZIP归档文档的`io.Reader`。使用`zip.Reader`实例，遍历归档中的所有文件，检查文件名。如果文件名匹配两个属性文件名中的一个，则调用`process()`函数，实参为文件和希望解析成的任意结构类型——`OfficeCoreProperty`或`OfficeAppProperty`。
