@@ -1,17 +1,19 @@
-| vulnerable        | compromise | flaw | arbitrary | scenario | infrastructure |
-| ----------------- | ---------- | ---- | --------- | -------- | -------------- |
-| For demonstration | purposes   |      |           |          |                |
-| payload           |            |      |           |          |                |
+# word
 
-| out of the way | We’ll get to that in a minute. | What gives? | We have a lot to cover here. | essentially | malicious                                                    |
-| :------------- | ------------------------------ | ----------- | ---------------------------- | ----------- | ------------------------------------------------------------ |
-|                |                                |             |                              |             | \| In short \| Pretty slick! \| individual \| filling out \| potentially \| multiplexing \| |
+| vulnerable | compromise | flaw | arbitrary | scenario | infrastructure |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| For demonstration | purposes |  |  |  |  |
+| payload |  |  |  |  |  |
 
-If you’re new to it, 
+| out of the way | We’ll get to that in a minute. | What gives? | We have a lot to cover here. | essentially | malicious |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+|  |  |  |  |  | \| In short \| Pretty slick! \| individual \| filling out \| potentially \| multiplexing \| |
+
+If you’re new to it,
 
 virtual
 
-restrictive 
+restrictive
 
 intelligently
 
@@ -21,7 +23,7 @@ respectively
 
 In a real situation
 
-First off, 
+First off,
 
 rudimentary
 
@@ -55,7 +57,7 @@ legitimate
 
 bottleneck
 
- robust, elegant 
+robust, elegant
 
 opted to
 
@@ -83,7 +85,7 @@ enumerate
 
 nefarious
 
-No special considerations need to be made, 
+No special considerations need to be made,
 
 exfiltration
 
@@ -123,32 +125,26 @@ iterations
 
 ## ch-7
 
-| tangible            | thrilling     | lucrative prize | approximately | estimates    | compromise | convenient                            | underscore |
-| ------------------- | ------------- | --------------- | ------------- | ------------ | ---------- | ------------------------------------- | ---------- |
-| in no way           | moral         | juicy           | indicator     | In the event | disposable | flavor                                | underlying |
-| overlap             | slightly      | facilitate      | adhere        | inherit      | identical  | pilfer                                | endeavor   |
-| As a matter of fact | indiscernible | recursively     | deem          | handful      | splendidly | That’s just about all there is to it. | dove into  |
-|                     |               |                 |               |              |            |                                       |            |
-
-
+| tangible | thrilling | lucrative prize | approximately | estimates | compromise | convenient | underscore |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| in no way | moral | juicy | indicator | In the event | disposable | flavor | underlying |
+| overlap | slightly | facilitate | adhere | inherit | identical | pilfer | endeavor |
+| As a matter of fact | indiscernible | recursively | deem | handful | splendidly | That’s just about all there is to it. | dove into |
+|  |  |  |  |  |  |  |  |
 
 ## ch-8
 
-| obfuscate | surface  | deduce           | specification | equivalent | To summarize |
-| --------- | -------- | ---------------- | ------------- | ---------- | ------------ |
-| sake      | optimize | Broadly speaking | innocent      | exploit    |              |
+| obfuscate | surface | deduce | specification | equivalent | To summarize |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| sake | optimize | Broadly speaking | innocent | exploit |  |
 
 ## ch-10
 
-| practitioner    | cumbersome                    | evolution   | involvement | massive                       | vulnerability    |
-| --------------- | ----------------------------- | ----------- | ----------- | ----------------------------- | ---------------- |
-| exclusively     | demonstrate                   | variant     | adhere      | predictable                   | validating       |
-| kick off        | forewarned                    | portability | implicit    | For the sake of sim- plicity, | accommodate      |
-| Other than that | oddly                         | Likewise    | endeavor    | significant                   | Up to this point |
-| implicit        | overwhelming                  | coordinate  | arbitrary   | highlighted                   | adversarial      |
-| decisions       | you must consider trade-offs. | tackle      | demonstrate |                               |                  |
-
-
-
-
+| practitioner | cumbersome | evolution | involvement | massive | vulnerability |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| exclusively | demonstrate | variant | adhere | predictable | validating |
+| kick off | forewarned | portability | implicit | For the sake of sim- plicity, | accommodate |
+| Other than that | oddly | Likewise | endeavor | significant | Up to this point |
+| implicit | overwhelming | coordinate | arbitrary | highlighted | adversarial |
+| decisions | you must consider trade-offs. | tackle | demonstrate |  |  |
 
