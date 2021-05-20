@@ -10,7 +10,7 @@
 
 使用Miek Gieben编写的名为Go DNS的第三方包来规避这些缺点，这是我们的首选DNS包，因为它是高度模块化，并经过良好的测试。使用下面的命令来安装：
 
-```shell script
+```shell
 $ go get github.com/miekg/dns
 ```
 
@@ -41,19 +41,19 @@ func main() {
 
 执行清单 5-1 之前，先运行像 Wireshark 或 tcpdump 抓包工具来查看流量。下面是在LINUX上使用tcpdump的示例：
 
-```shell script
+```shell
 $ sudo tcpdump -i eth0 -n udp port 53
 ```
 
 在另一个终端，像下面这样编译并执行程序：
 
-```shell script
+```shell
 $ go run main.go
 ```
 
 执行代码后，在抓包的输出中应该会看到一个通过 8.8.8.8.53 的UDP连接。应该也会看到下面这样的DNS协议详情：
 
-```shell script
+```shell
 $ sudo tcpdump -i eth0 -n udp port 53
 tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
 listening on ens33, link-type EN10MB (Ethernet), capture size 262144 bytes 
@@ -555,7 +555,7 @@ develop.microsoft.com				104.43.195.251
 
 安装完Ubuntu VM后，再安装 *Docker* 。在本章代理那部分，使用Docker运行多个Cobalt Strike实例。在终端中运行下面的命令来安装Docker：
 
-```shell script
+```shell
 $ sudo apt-get install apt-transport-https ca-certificates 
 sudo apt-key adv \
 	--keyserver hkp://ha.pool.sks-keyservers.net:80 \
@@ -569,7 +569,7 @@ $ sudo usermod -aG docker USERNAME
 
 安装好之后需要重启系统。接下来执行下面的命令验证Docker是否安装成功：
 
-```shell script
+```shell
 $ docker version 
 Client:
 	Version: 1.13.1 API version: 1.26
