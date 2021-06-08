@@ -126,3 +126,22 @@ func createEvents(s string)| *string {
 
 严格来说，我们只添加了一行代码！`runtime .KeepAlive(success)` 这行代码告诉Go在运行时`success`变量维持可访问的，直到明确地释放或运行结束。意思是尽管`success`变量被保存为`uinitptr`，但是不会被垃圾收集，原因是明确地调用了`runtime .KeepAlive()`。
 
+注意，Go中的`syscall`包广泛地使用了`unsafe.Pointer()`，虽然某些函数，如`syscall9()`，例外地有类型安全，但并非所有函数都用的。 此外，当做破解项目时，肯定会遇到需要以不安全的方式操作堆或堆栈内存的情况。
+
+
+## 使用`syscall`包执行进程注入
+
+通常，我们需要把代码注入到进程中。可能是因为我们想要获得对系统（shell）的远程命令行访问，甚至在源代码不可用时调试运行中的程序。 理解进程注入机制将会帮助我们执行更有趣的任务，例如加载内存中的恶意软件或钩子函数。 无论哪种方式，本节将演示如何使用Go与Microsoft Windows api交互，来执行进程注入。 我们将把存储在磁盘上的有效负载注入到已存在的进程内存中。整个过程如图12-5所示。
+
+![](https://github.com/YYRise/black-hat-go/raw/master/ch-12/images/12-5.png)
+图12-5：进程注入原理
+
+第1步，使用Windows的`OpenProcess()`函数建立进程句柄，以及所需的进程访问权限。 这是进程级交互所需要的，无论处理本地进程还是远端进程。
+
+在第2步的Windows`VirtualAllocEx()`函数中使用获取到的进程句柄，该函数在远端进程中申请虚拟内存。这是字节级的代码（如shellcode或DLL）加载到远程内存中所必需的。
+
+第3步，使用Windows的`WriteProcessMemory()`函数将字节级的代码加载到内存中。 注入进程到这一步，作为攻击者的我们要决定如何使用我们的shellcode或DLL。 当想要搞懂运行中的程序时，这也是需要注入调试代码的地方。
+
+最后，第4步，使用Windows的`CreateRemoteThread()`函数调用本地导出的Windows DLL函数，如位于`Kernel32.dll`中的`LoadLibraryA()`，这样我们就可以使用`WriteProcessMemory()`来执行之前植入进程中的代码。
+
+我们刚才描述的四个步骤只是一个基本的流程注入示例。 我们将在整个进程注入示例中定义一些额外的文件和函数，这里没有必要介绍这些文件和函数，但在遇到它们时再详细介绍。
