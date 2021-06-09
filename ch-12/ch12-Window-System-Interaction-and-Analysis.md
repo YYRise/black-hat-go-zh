@@ -279,3 +279,32 @@ func OpenProcessHandle(i *Inject) error {
 
 `ProcOpenProcess.Call()`方法参数为几个`uintprt`类型的值，如果看下该方法的签名，这些值可能会被声明为`...uintptr`。另外，返回值类型也被设计为`uintptr`和`error`。而且，错误类型被命名为`lastErr`，可以再Windows API
 文档中找到它的引用，并包含由实际调用函数定义的返回错误值。
+
+### 用Windows API `VirtualAllocEx` 操作内存
+
+既然已经有了远端进程句柄，我们就需要个方法在远端进程中申请虚拟内存。这是必要的，以便留出一个内存区域，并在写入之前初始化。现在就来创建它。将清单12-8中定义的函数放到清单12-7中的函数后面。（在浏览进程注入代码过程中，我们会一个接一个地添加函数。）
+
+```go
+func VirtualAllocEx(i *Inject) error {
+	var flAllocationType uint32 = MEM_COMMIT | MEM_RESERVE 
+    var flProtect uint32 = PAGE_EXECUTE_READWRITE 		lpBaseAddress, _, lastErr := ProcVirtualAllocEx.Call(
+i.RemoteProcHandle, // HANDLE hProcess
+uintptr(nullRef), // LPVOID lpAddressu
+uintptr(i.DLLSize), // SIZE_T dwSize
+uintptr(flAllocationType), // DWORD flAllocationType
+// https://docs.microsoft.com/en-us/windows/desktop/Memory/memory-protection-constants
+uintptr(flProtect)) // DWORD flProtect 
+    if lpBaseAddress == 0 {
+		return errors.Wrap(lastErr, "[!] ERROR : Can't Allocate Memory On Remote Process.") 
+    }
+	i.Lpaddr = lpBaseAddress
+	fmt.Printf("[+] Base memory address: %v\n", unsafe.Pointer(i.Lpaddr)) 
+    return nil
+}
+```
+
+清单12-8 通过`VirtualAllocEx`在远端进程中申请内存（/ch-12/procInjector /winsys/inject.go）
+
+
+
+不像前面`OpenProcess()`系统调用，通过`nullRef`变量介绍一种新的细节。Go中所有的 `null` 用 `nil` 关键字代表。然而，这是个有类型的值，也就是通过没有类型的`syscall`直接传递会导致运行时错误，或类型转换错误——无论哪种错误，都是糟糕的状况。在本例中修复非常简单：声明一个0值的变量，例如整数。0值现在可以被接收的Windows函数可靠地传递和解释为空值。
