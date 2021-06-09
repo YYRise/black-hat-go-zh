@@ -181,3 +181,101 @@ var (
 清单12-3：winmods文件(/ch-12/procInjector/winsys/winmods.go)
 
 使用`NewLazyDLL()`加载`Kernel32` DLL。 `Kernel32`管理了很多Windows内部进程的功能，像地址，句柄，内存申请等等。（值得注意的是，从Go版本1.12.2开始，可以使用一些新函数：`LoadLibraryEx()`和`NewLazySystemDLL()`来更好的加载DLL，并防止系统DLL被劫持攻击。）
+
+在和DLL交互前，必须创建代码中用到的变量。 为此，为用到的每个API调用`module.NewProc`。 再次调用`OpenProcess()`，并赋值给导出的变量`ProcOpenProcess`。 `OpenProcess()`的使用是任意的；它旨在演示可以将任何导出的 Windows DLL 函数赋值给变量。
+
+
+### 使用Windows`OpenProcess` API 获取进程Token
+
+接下来，构建`OpenProcessHandle()`函数，用于获取进程句柄token。 我们会在代码中交替使用`token`和`handle`这两个术语，但是要知道Windows系统中的每个进程都有唯一的进程token。这提供了一种强制执行相关安全的模型，例如`Mandatory Integrity Control`，一种复杂的安全模型（为了更好地了解进程级的机制，这是值得研究的）。例如，安全模型包括诸如进程级权限和特权之类的项目，并规定了非特权进程和升级了的进程如何交互。 
+
+首先，看下C++的`OpenProcess()`数据结构在Windows API文档中是如何定义的（清单12-4）。我们将定义这个对象，就好像从本机 Windows C++ 代码调用它一样。然而，我们不会这样做，因为我们将定义这个对象以与 Go 的 `syscall` 包一起使用。 因此，我们只需要把这个对象转换成Go中的数据类型。
+```c++
+HANDLE OpenProcess(
+	DWORD dwDesiredAccess,
+	BOOL bInheritHandle,
+	DWORD dwProcessId
+);
+```
+清单 12-4: Windows C++ 对象和数据类型
+
+第一个必须的任务是将`DWORD`转换成Go中可用的类型。 `DWORD`是由Microsoft定义的32位无符号整数，和Go中的`uint32`类型相一致。 `DWORD`值声明它必须包含 `dwDesiredAccess`，或者如文档所述，“一个或多个进程访问权限”。 进程访问权限规定了我们希望对进程采取的操作，给定有效的进程token。
+
+我们想声明一个进程访问权限的变量。因为这些值不会变，把这些相关的值都放到constants.go文件中，如清单12-5那样。 每一行定义一个进程访问权限。 清单中几乎包含了所有可用的访问权限，但是我们只使用获取进程句柄所需的权限。
+
+```go
+const (
+	// docs.microsoft.com/en-us/windows/desktop/ProcThread/process-security-and-access-rights
+	PROCESS_CREATE_PROCESS 				= 0x0080
+	PROCESS_CREATE_THREAD 				= 0x0002
+	PROCESS_DUP_HANDLE 					= 0x0040
+	PROCESS_QUERY_INFORMATION 			= 0x0400
+	PROCESS_QUERY_LIMITED_INFORMATION 	= 0x1000
+	PROCESS_SET_INFORMATION 			= 0x0200
+	PROCESS_SET_QUOTA 					= 0x0100
+	PROCESS_SUSPEND_RESUME 				= 0x0800
+	PROCESS_TERMINATE 					= 0x0001
+	PROCESS_VM_OPERATION 				= 0x0008
+	PROCESS_VM_READ 					= 0x0010
+	PROCESS_VM_WRITE 					= 0x0020
+	PROCESS_ALL_ACCESS 					= 0x001F0FFF
+)
+```
+清单12-5：声明进程访问权限的常量部分（/ch-12/procInjector/winsys/constants.go）
+
+清单12-5中定义的所有的进程访问权限都与它们各自的十六进制常量值相一致，这是将它们赋值给 Go 变量所需的格式。
+
+在查看清单12-6之前，我们想描述一个问题是，下面的大多数进程注入函数，不仅仅是`OpenProcessHandle()`，将使用 `Inject` 类型的自定义对象并返回 `error` 类型的值。 `Inject`机构（清单12-6）包含几个值，这些值通过`syscall`提供给Windows相关的函数。
+
+```go
+type Inject struct {
+	Pid uint32
+	DllPath string
+	DLLSize uint32
+	Privilege string
+	RemoteProcHandle uintptr
+	Lpaddr uintptr
+	LoadLibAddr uintptr
+	RThread uintptr
+	Token TOKEN
+}
+type TOKEN struct {
+	tokenHandle syscall.Token
+}
+```
+清单 12-6：持有几个进程注入数据类型的`injection`结构体（/ch-12/procInjector/winsys/models.go）
+
+清单12-7展示了第一个实际函数 `OpenProcessHandle()`。 来看下下面的代码块，并讨论下细节。
+
+```go
+func OpenProcessHandle(i *Inject) error {
+	var rights uint32 = PROCESS_CREATE_THREAD |
+		PROCESS_QUERY_INFORMATION |
+		PROCESS_VM_OPERATION |
+		PROCESS_VM_WRITE |
+		PROCESS_VM_READ
+	var inheritHandle uint32 = 0
+	var processID uint32 = i.Pid
+	remoteProcHandle, _, lastErry := ProcOpenProcess.Callz(
+		uintptr(rights), // DWORD dwDesiredAccess
+		uintptr(inheritHandle), // BOOL bInheritHandle
+		uintptr(processID)) // DWORD dwProcessId
+	if remoteProcHandle == 0 {
+		return errors.Wrap(lastErr, `[!] ERROR :Can't Open Remote Process. Maybe running w elevated integrity?`)
+	}
+	i.RemoteProcHandle = remoteProcHandle
+	fmt.Printf("[-] Input PID: %v\n", i.Pid)
+	fmt.Printf("[-] Input DLL: %v\n", i.DllPath)
+	fmt.Printf("[+] Process handle: %v\n", unsafe.Pointer(i.RemoteProcHandle))
+	return nil
+}
+```
+清单 12-7：用于获取进程句柄的`OpenProcessHandle()`函数 (/ch-12/procInjector/winsys/inject.go)
+
+
+代码开始先把进程访问权限赋值给`uint32`类型的`rights`变量。 分配的实际包含 `PROCESS_CREATE_THREAD`，该值允许我们在远端进程中创建线程。 接下来是`PROCESS_QUERY_INFORMATION`，用来查询远端进程的详情。 最后是三个进程访问权限，`PROCESS_VM_OPERATION`， `PROCESS_VM_WRITE`， 和 `PROCESS_VM_READ`，这三个可以管理远端进程的虚拟内存。
+
+接下来声明变量`inheritHandle`，指示新进程句柄是否继承现有句柄。 传入0表示布尔值为false，因为要创建新进程句柄。 紧随其后的是`processID`变量，包含被攻击进程的PID。 与此同时，调整变量类型使和Windows API文档中的一致，这样声明的两个变量类型都是`uint32`。 这种模式一直持续到我们使用 `ProcOpenProcess.Call()` 进行系统调用。
+
+`ProcOpenProcess.Call()`方法参数为几个`uintprt`类型的值，如果看下该方法的签名，这些值可能会被声明为`...uintptr`。另外，返回值类型也被设计为`uintptr`和`error`。而且，错误类型被命名为`lastErr`，可以再Windows API
+文档中找到它的引用，并包含由实际调用函数定义的返回错误值。
