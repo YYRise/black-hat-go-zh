@@ -65,14 +65,14 @@ Windows API文档的最后是Requirements部分，含有如图12-3中的重要�
 **注意**
 *请记住，导入`unsafe`包可能是不可移植的，而且尽管Go通常兼容Go的1版本，但使用`unsafe`包就不能保证了。*
 
-`uintptr`类型允许原生安全类型间的转换或计算，及其他用途。 尽管`uintptr`是整数类型，也广泛的用来表示内存地址。 当与类型安全指针一起使用时，Go的垃圾收集器将在运行时维护相关的引用。
+`uintptr`类型允许原生安全类型间的转换或计算，及其他用途。 尽管`uintptr`是整数类型，也广泛的用来表示内存地址。 当与类型安全指针一起使用时，Go的GC将在运行时维护相关的引用。
 
-然而，当`unsafe.Pointer`被引入后，情况就会发生变化。 回想下，`uintptr`本质是一个无符号的整数。 如果使用 `unsafe.Pointer` 创建了一个指针，然后赋值给`uintptr`，不能保证Go的垃圾收集器能维护所引用内存地址值的完整性。 图12-4进一步描述了这个问题。
+然而，当`unsafe.Pointer`被引入后，情况就会发生变化。 回想下，`uintptr`本质是一个无符号的整数。 如果使用 `unsafe.Pointer` 创建了一个指针，然后赋值给`uintptr`，不能保证Go的GC能维护所引用内存地址值的完整性。 图12-4进一步描述了这个问题。
 
 ![](https://github.com/YYRise/black-hat-go/raw/master/ch-12/images/12-4.png)
 图12-4：使用`unsafe.Pointer`和`uintptr`时的潜在危险指针
 
-图的上半部分是一个引用了Go的类型安全指针的`uintptr`。 因此，在运行时要维护该引用，并进行严格的垃圾收集。 图片的下半部分展示的是引用`unsafe.Pointer`类型的`uintptr`，虽然会被垃圾收集，但Go不保存也不管理任意数据类型的指针。 清单12-1描述了这个问题
+图的上半部分是一个引用了Go的类型安全指针的`uintptr`。 因此，在运行时要维护该引用，并进行严格的GC。 图片的下半部分展示的是引用`unsafe.Pointer`类型的`uintptr`，虽然会被GC，但Go不保存也不管理任意数据类型的指针。 清单12-1描述了这个问题
 
 ``` go
 func state() {
@@ -97,7 +97,7 @@ func createEvents(s string)| *string {
 
 例如，此代码清单可能是用来创建状态机。 有三个变量，分别通过调用`createEvents()`函数赋值onload、receive和success的指针。创建`map[string]interface{}`。 使用`interface{}`类型是因为可以接收不用类型的数据。 此例中，用来接收`unsafe.Pointer`和`uintptr`类型的值。
 
-此时，很可能已经发现了危险的代码段。 虽然`mapEvents["messageRecieve"]`的值是`unsafe.Pointer`类型，但它仍然保持对`receive`变量的原始引用，并将提供与最初相同的一致输出。 相反，`mapEvents["messageSuccess"]`的值是`uintptr`类型。 这意味着一旦`unsafe.Pointer`值引用被赋值给`uintptr`类型的`success`变量，`success`变量就会被垃圾收集器释放。 此外，`uintptr`只是一种类型，保存内存地址字面意思的整数，而不是对指针的引用。 因此，无法保证预期的输出，因为该值可能不再存在。
+此时，很可能已经发现了危险的代码段。 虽然`mapEvents["messageRecieve"]`的值是`unsafe.Pointer`类型，但它仍然保持对`receive`变量的原始引用，并将提供与最初相同的一致输出。 相反，`mapEvents["messageSuccess"]`的值是`uintptr`类型。 这意味着一旦`unsafe.Pointer`值引用被赋值给`uintptr`类型的`success`变量，`success`变量就会被GC释放。 此外，`uintptr`只是一种类型，保存内存地址字面意思的整数，而不是对指针的引用。 因此，无法保证预期的输出，因为该值可能不再存在。
 
 有没有一种安全的方式一起使用`uintptr`和`unsafe.Pointer`？ 可以利用`runtime.Keepalive`来做到，`runtime.Keepalive`能够阻止变量被回收。 修改下前面的代码块来看下这个问题（清单12-2）。
 
@@ -124,7 +124,7 @@ func createEvents(s string)| *string {
 ```
 清单 12-2：使用`runtime.Keepalive`阻止变量被回收
 
-严格来说，我们只添加了一行代码！`runtime .KeepAlive(success)` 这行代码告诉Go在运行时`success`变量维持可访问的，直到明确地释放或运行结束。意思是尽管`success`变量被保存为`uinitptr`，但是不会被垃圾收集，原因是明确地调用了`runtime .KeepAlive()`。
+严格来说，我们只添加了一行代码！`runtime .KeepAlive(success)` 这行代码告诉Go在运行时`success`变量维持可访问的，直到明确地释放或运行结束。意思是尽管`success`变量被保存为`uinitptr`，但是不会被GC，原因是明确地调用了`runtime .KeepAlive()`。
 
 注意，Go中的`syscall`包广泛地使用了`unsafe.Pointer()`，虽然某些函数，如`syscall9()`，例外地有类型安全，但并非所有函数都用的。 此外，当做破解项目时，肯定会遇到需要以不安全的方式操作堆或堆栈内存的情况。
 
@@ -145,3 +145,39 @@ func createEvents(s string)| *string {
 最后，第4步，使用Windows的`CreateRemoteThread()`函数调用本地导出的Windows DLL函数，如位于`Kernel32.dll`中的`LoadLibraryA()`，这样我们就可以使用`WriteProcessMemory()`来执行之前植入进程中的代码。
 
 我们刚才描述的四个步骤只是一个基本的流程注入示例。 我们将在整个进程注入示例中定义一些额外的文件和函数，这里没有必要介绍这些文件和函数，但在遇到它们时再详细介绍。
+
+### 定义Windows DLL和赋值变量
+清单12-3中的第一步是创建`winmods`文件。（所有代码都在[https://github.com/blackhat-go/bhg/](https://github.com/blackhat-go/bhg/)。）该文件定义了本地的 Windows DLL，用于维护导出系统级的API，Go的`syscall`包调用这些API。 `winmods`文件中有比我们示例项目所需要的更多的Windows DLL模块引用的声明和分配，但我们仍会记录下，以便在更高级的注入代码中使用。
+
+```go 
+import "syscall"
+
+var (
+	ModKernel32 = syscall.NewLazyDLL("kernel32.dll")
+	modUser32 = syscall.NewLazyDLL("user32.dll")
+	modAdvapi32 = syscall.NewLazyDLL("Advapi32.dll")
+
+	ProcOpenProcessToken 		= modAdvapi32.NewProc("GetProcessToken")
+	ProcLookupPrivilegeValueW 	= modAdvapi32.NewProc("LookupPrivilegeValueW")
+	ProcLookupPrivilegeNameW 	= modAdvapi32.NewProc("LookupPrivilegeNameW")
+	ProcAdjustTokenPrivileges 	= modAdvapi32.NewProc("AdjustTokenPrivileges")
+	ProcGetAsyncKeyState 		= modUser32.NewProc("GetAsyncKeyState")
+	ProcVirtualAlloc 			= ModKernel32.NewProc("VirtualAlloc")
+	ProcCreateThread 			= ModKernel32.NewProc("CreateThread")
+	ProcWaitForSingleObject 	= ModKernel32.NewProc("WaitForSingleObject")
+	ProcVirtualAllocEx 			= ModKernel32.NewProc("VirtualAllocEx")
+	ProcVirtualFreeEx 			= ModKernel32.NewProc("VirtualFreeEx")
+	ProcCreateRemoteThread 		= ModKernel32.NewProc("CreateRemoteThread")
+	ProcGetLastError 			= ModKernel32.NewProc("GetLastError")
+	ProcWriteProcessMemory 		= ModKernel32.NewProc("WriteProcessMemory")
+	ProcOpenProcess 			= ModKernel32.NewProc("OpenProcess")
+	ProcGetCurrentProcess 		= ModKernel32.NewProc("GetCurrentProcess")
+	ProcIsDebuggerPresent 		= ModKernel32.NewProc("IsDebuggerPresent")
+	ProcGetProcAddress 			= ModKernel32.NewProc("GetProcAddress")
+	ProcCloseHandle 			= ModKernel32.NewProc("CloseHandle")
+	ProcGetExitCodeThread 		= ModKernel32.NewProc("GetExitCodeThread")
+)
+```
+清单12-3：winmods文件(/ch-12/procInjector/winsys/winmods.go)
+
+使用`NewLazyDLL()`加载`Kernel32` DLL。 `Kernel32`管理了很多Windows内部进程的功能，像地址，句柄，内存申请等等。（值得注意的是，从Go版本1.12.2开始，可以使用一些新函数：`LoadLibraryEx()`和`NewLazySystemDLL()`来更好的加载DLL，并防止系统DLL被劫持攻击。）
