@@ -518,3 +518,37 @@ func main() {
 清单 12-14：PE 二进制的文件I/O (/ch-12/peParser/main.go)
 
 在查看每个 PE 结构组件之前，需要使用 Go PE 包对初始导入和文件 I/O 进行存根。分别使用  `os.Open()` 和 `pe.NewFile()` 创建文件句柄和 PE 文件对象。这是必要的，因为我们打算使用 Reader 对象（例如文件或二进制读取器）来解析 PE 文件内容。
+
+#### 解析 DOS Header和 DOS Stub
+
+图 12-6 所示的自顶向下 PE 数据结构的第一部分为 DOS 头。以下唯一值始终存在于任何基于 Windows DOS 的可执行二进制文件中：`0x4D 0x5A` （或者ASCII 中的 MZ），恰当地将该文件声明为 Windows 可执行文件。所有 PE 文件中普遍存在的另一个值位于偏移量  `0x3C`。此偏移量处的值指向包含 PE 文件签名的另一个偏移量： `0x50 0x45 0x00 0x00`（或 ASCII 中的 PE）。
+
+紧随其后的头文件是 DOS Stub，总是用十六进制的值表示`This program cannot be run in DOS mode`；当编译器的` /STUB` 链接器选项提供任意字符串值时，就会发生这种情况的例外。如果用你最喜欢的十六进制编辑器打开 Telegram 应用程序，它应该类似于图 12-7。所有这些值都存在。
+
+![](https://github.com/YYRise/black-hat-go/raw/master/ch-12/images/12-7.png)
+图12-7：典型的PE二进制格式的文件头
+
+到目前为止，已经描述了 DOS Header 和 Stub，同时还通过十六进制编辑器查看了十六进制表示。现在，让我们看看用 Go 代码解析这些相同的值，如清单 12-15 中的那样。
+
+```go
+    dosHeader := make([]byte, 96) sizeOffset := make([]byte, 4)
+    // Dec to Ascii (searching for MZ)
+    _, err = f.Read(dosHeader)u
+    check(err)
+    fmt.Println("[-----DOS Header / Stub-----]")
+    fmt.Printf("[+] Magic Value: %s%s\n", string(dosHeader[0]), string(dosHeader[1]))v
+    // Validate PE+0+0 (Valid PE format)
+    pe_sig_offset := int64(binary.LittleEndian.Uint32(dosHeader[0x3c:]))w f.ReadAt(sizeOffset[:], pe_sig_offset)x
+    fmt.Println("[-----Signature Header-----]")
+    fmt.Printf("[+] LFANEW Value: %s\n", string(sizeOffset))
+/* OUTPUT
+[-----DOS Header / Stub-----] 
+[+] Magic Value: MZ 
+[-----Signature Header-----] 
+[+] LFANEW Value: PE
+*/
+```
+
+清单 12-15： 解析 DOS Header 和 Stub 的值 (/ch-12/peParser/main.go)
+
+使用Go的`file Reader`实例从文件头开始向前读取96字节，来确认初始二进制签名。 回想下前两个字节规定ASCII 的 `MZ`。 PE包方便了将PE数据结构转换成其他易使用的数据。 但是，仍然需要手动二进制读取器和按位功能来实现它。我们对 0x3c 引用的偏移值执行二进制读取，然后准确读取由值 0x50 0x45 (PE) 和 2 0x00 字节组成的 4 个字节。
