@@ -475,3 +475,19 @@ func VirtualFreeEx(i *Inject) error {
 - 创建DLL并将整个DLL加载到内存中。这类似于之前的练习：唯一的不同是加载整个 DLL 而不是 shellcode。 使用Process Monitor设置路径过滤器、进程过滤器或两者都设置，并观察系统 DLL 加载顺序。什么妨碍 DLL 加载顺序劫持？
 
 - 使用Frida [https://www.frida.re/](https://www.frida.re/)把Google Chrome V8 JavaScript 引擎注入到受害进程中。它在移动安全从业者和开发人员中拥有大量的用户：可以使用它来执行运行时分析、进程内调试和检测。还可以将 Frida 与其他操作系统一起使用，例如 Windows。创建自己的 Go 代码，将 Frida 注入受害者进程，并使用 Frida 在同一进程中运行 JavaScript。熟悉 Frida 的工作方式需要进行一些研究，但我们保证这是非常值得的。
+
+
+
+## 便携式可执行文件
+
+有时我们需要一种工具来传递我们的恶意代码。例如，这可能是一个新生成的可执行文件（通过预先存在的代码中的漏洞传递），或者是系统上已存在且修改过的可执行文件。如果我们想修改现有的可执行文件，我们需要了解 Windows `Portable Executable (PE) `文件的二进制数据格式的结构，因为它规定了如何构建可执行文件以及可执行文件的功能。在本节中，我们将介绍 PE 数据结构和 Go 的 PE 包，并构建一个 PE 二进制解析器，可以用来浏览 PE 二进制的结构。
+
+### 了解PE文件格式
+
+首先来探讨下PE数据结构的格式。 Windows PE文件格式是一种数据结构，最常表示为可执行文件、目标代码或 DLL。PE 格式还维护对 PE 二进制文件初始操作系统加载期间使用的所有资源的引用，包括用于按序维护导出函数的导出地址表 (EAT)，用于按名称维护导出函数的导出名称表，导入地址表 (IAT)，导入名称表，线程本地存储和资源管理等结构。可以在[https://docs.microsoft.com/en-us/windows/win32/debug/pe-format/](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format/) 找到PE格式的说明。 图12-6展示了PE数据结构：Windows 二进制文件的可视化表示。
+
+![](https://github.com/YYRise/black-hat-go/raw/master/ch-12/images/12-6.png)
+图 12-6：Windows PE 文件格式
+
+在构建PE解析器时，将自上而下地审查每一部分。
+
