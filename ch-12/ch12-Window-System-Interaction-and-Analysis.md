@@ -491,3 +491,6 @@ func VirtualFreeEx(i *Inject) error {
 
 在构建PE解析器时，将自上而下地审查每一部分。
 
+### 编写PE解析器
+
+通过下面的部分，编写分析 Windows 二进制可执行文件中的每个 PE 部分所需的各个解析器组件。例如，我们将使用与位于 https://telegram.org 的 Telegram 消息应用程序的二进制文件关联的 PE 格式，因为这个应用程序不像经常被过度使用的 putty SSH 二进制示例那么简单，并且以 PE 格式分发。 几乎可以使用任何 Windows 二进制可执行文件，也鼓励您调研其他可执行文件。
