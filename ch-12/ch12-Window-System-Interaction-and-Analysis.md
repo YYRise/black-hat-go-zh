@@ -494,3 +494,27 @@ func VirtualFreeEx(i *Inject) error {
 ### 编写PE解析器
 
 通过下面的部分，编写分析 Windows 二进制可执行文件中的每个 PE 部分所需的各个解析器组件。例如，我们将使用与位于 https://telegram.org 的 Telegram 消息应用程序的二进制文件关联的 PE 格式，因为这个应用程序不像经常被过度使用的 putty SSH 二进制示例那么简单，并且以 PE 格式分发。 几乎可以使用任何 Windows 二进制可执行文件，也鼓励您调研其他可执行文件。
+
+#### 加载PE二进制和文件I/O
+
+清单12-14中，首先使用 Go 的PE 包来准备 Telegram 二进制文件以供进一步解析。可以将解析器代码放到单独一个文件的main()函数中。
+
+```go
+import (
+    "debug/pe"
+    "encoding/binary" "fmt"
+    "io"
+    "log"
+    "os" 
+)
+func main() {
+    f, err := os.Open("Telegram.exe")
+    check(err)
+    pefile, err := pe.NewFile(f)
+    check(err)
+    defer f.Close() defer pefile.Close()
+```
+
+清单 12-14：PE 二进制的文件I/O (/ch-12/peParser/main.go)
+
+在查看每个 PE 结构组件之前，需要使用 Go PE 包对初始导入和文件 I/O 进行存根。分别使用  `os.Open()` 和 `pe.NewFile()` 创建文件句柄和 PE 文件对象。这是必要的，因为我们打算使用 Reader 对象（例如文件或二进制读取器）来解析 PE 文件内容。
