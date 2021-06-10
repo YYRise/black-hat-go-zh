@@ -280,7 +280,7 @@ func OpenProcessHandle(i *Inject) error {
 `ProcOpenProcess.Call()`方法参数为几个`uintprt`类型的值，如果看下该方法的签名，这些值可能会被声明为`...uintptr`。另外，返回值类型也被设计为`uintptr`和`error`。而且，错误类型被命名为`lastErr`，可以再Windows API
 文档中找到它的引用，并包含由实际调用函数定义的返回错误值。
 
-### 用Windows API `VirtualAllocEx` 操作内存
+### 使用Windows API `VirtualAllocEx` 操作内存
 
 既然已经有了远端进程句柄，我们就需要个方法在远端进程中申请虚拟内存。这是必要的，以便留出一个内存区域，并在写入之前初始化。现在就来创建它。将清单12-8中定义的函数放到清单12-7中的函数后面。（在浏览进程注入代码过程中，我们会一个接一个地添加函数。）
 
@@ -309,7 +309,7 @@ uintptr(flProtect)) // DWORD flProtect
 不像前面`OpenProcess()`系统调用，通过`nullRef`变量介绍一种新的细节。Go中所有的 `null` 用 `nil` 关键字代表。然而，这是个有类型的值，也就是通过没有类型的`syscall`直接传递会导致运行时错误，或类型转换错误——无论哪种错误，都是糟糕的状况。在本例中修复非常简单：声明一个0值的变量，例如整数。0值现在可以被接收的Windows函数可靠地传递和解释为`null`值。
 
 
-### 用Windows API `WriteProcessMemory` 写内存
+### 使用Windows API `WriteProcessMemory` 写内存
 
 下一步，使用`WriteProcessMemory`函数写入前面使用`VirtualAllocEx()`函数初始化过的远端进程内存。 清单12-9中，通过按文件路径调用DLL使流程简单，而并非将整个DLL代码写入内存。
 
@@ -340,7 +340,7 @@ func WriteProcessMemory(i *Inject) error {
 最后，看下`unsafe.Pointer`的作用。`ProcWriteProcessMemory.Call`中的第三个参数在Windows API规范中定义为“lpBuffer——指向包含写入指定进程的地址空间的数据缓冲区的指针。” 为了将 `dllPathBytes` 中定义的 Go 指针传递 Windows 函数，使用`unsafe.Pointer`来规避类型转换。这里要说明的最后一点是 `uintptr` 和 `unsafe.Pointer` 可以放心地使用，因为这两者都是内联使用，并且没有赋值给返回值来重用。
 
 
-### 用Windows API `GetProcessAddress` 查找 `LoadLibraryA`
+### 使用Windows API `GetProcessAddress` 查找 `LoadLibraryA`
 
 `Kernel32.dll`有个名为 `LoadLibraryA()` 的函数，该函数对所有的Windows版本都适用。Microsoft文档声明`LoadLibraryA()`“将指定的模块加载到调用进程的地址空间中。 也可能会加载指定模块引用的其他模块。” 在创建执行实际进程注入所需远端线程前，需先获取到`LoadLibraryA()`的内存地址。 这就需要用到`GetLoadLibAddress()`函数——前面提到的那些支持函数之一（清单 12-10）。
 
@@ -369,7 +369,7 @@ func GetLoadLibAddress(i *Inject) error {
 使用 `GetProcessAddress()` Windows 函数来确定调用 `CreateRemoteThread()` 函数所需的 `LoadLibraryA() `的起始内存地址。 `ProcGetProcAddress.Call()` 函数有两个参数：第一个是 `Kernel32.dll` 的句柄，其中包含`LoadLibraryA() `，第二个是从字符串"LoadLibraryA"转换来的`byte`切片。
 
 
-### 用Windows API `CreateRemoteThread` 执行恶意的DLL
+### 使用Windows API `CreateRemoteThread` 执行恶意的DLL
 
 使用 `CreateRemoteThread()` Windows 函数针对远端进程的虚拟内存区域创建一个线程。 如果该区域恰好是 `LoadLibraryA()`，现在就可以加载并执行包含恶意 DLL 文件路径的内存区域。 看下清单12-11。
 
@@ -401,7 +401,7 @@ func CreateRemoteThread(i *Inject) error {
 `ProcCreateRemoteThread.Call()`函数总共需要七个参数，但在示例中只用到了三个。 相关的参数是包含被入侵进程句柄的`RemoteProcHandle`，包含线程要调用的start routine 的`LoadLibAddr`（在本例中为 LoadLibraryA()），最后是指向保存有效负载位置的虚拟内存的指针。
 
 
-### 用Windows API `WaitforSingleObject` 验证注入
+### 使用Windows API `WaitforSingleObject` 验证注入
 
 使用Windows的`WaitforSingleObject()`函数来识别特定对象何时处于信号状态。 这和进程注入有关，因为我们希望等待线程执行，防止其过早退出。 简要讨论清单 12-12 中的函数定义。
 
@@ -428,3 +428,38 @@ func WaitForSingleObject(i *Inject) error {
 	return nil
 }
 ```
+清单 12-12：
+使用Windows的`WaitforSingleObject()`函数确保线程成功执行（/ch-12/procInjector/winsys/inject.go）
+
+代码中有三个地方需要注意。第一，`ProcWaitForSingleObject.Call()`系统调用传递的是清单12-11返回的线程句柄。 第二个参数是`INFINITE`的等待值，以声明与事件关联的无限到期时间。
+
+接下来是`ProcGetExitCodeThread.Call()`，确定线程是否成功结束。 如果成功结束，`LoadLibraryA` 应当会被调用，且我们的DLL会被执行。 最后，就像我们清理所有的句柄一样，传递给`ProcCloseHandle.Call()`系统调用以便明确地关闭线程对象的句柄。
+
+
+### 使用Windows API `VirtualFreeEx` 清理
+
+使用Windows的`VirtualFreeEx()`函数释放，或取消提交，在清单12-8中通过`VirtualAllocEx()`申请的虚拟内存。 这是清理内存所必需的，因为考虑到注入远端进程的代码的整体大小，初始化的内存区域可能相当大，例如整个的DLL。来看下代码（清单12-13）。
+
+```go
+func VirtualFreeEx(i *Inject) error {
+	var dwFreeType uint32 = MEM_RELEASE
+	var size uint32 = 0 //Size must be 0 to MEM_RELEASE all of the region
+	rFreeValue, _, lastErr := ProcVirtualFreeEx.Callu(
+		i.RemoteProcHandle, // HANDLE hProcess v
+		i.Lpaddr, // LPVOID lpAddress w
+		uintptr(size), // SIZE_T dwSize x
+		uintptr(dwFreeType)) // DWORD dwFreeType y
+	if rFreeValue == 0 {
+		return errors.Wrap(lastErr, "[!] ERROR : Error freeing process memory.")
+	}
+	fmt.Println("[+] Success: Freed memory region")
+	return nil
+}
+```
+清单 12-13：
+使用Windows的`VirtualFreeEx()`函数释放内存（/ch-12/procInjector
+/winsys/inject.go）
+
+`ProcVirtualFreeEx.Call()` 函数有四个参数。第一个是远端进程句柄，与要释放其内存的进程关联。 下一个是指向释放内存地址的指针。
+
+注意，变量`size`赋值为0。 如 Windows API 规范中所规定那样，把整个内存区间释放回可回收的状态这是必要的。 最后，我们通过`MEM_RELEASE` 操作来完全释放进程内存（以及我们对进程注入的讨论）。
