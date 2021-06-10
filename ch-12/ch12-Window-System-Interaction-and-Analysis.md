@@ -306,5 +306,35 @@ uintptr(flProtect)) // DWORD flProtect
 清单12-8 通过`VirtualAllocEx`在远端进程中申请内存（/ch-12/procInjector /winsys/inject.go）
 
 
+不像前面`OpenProcess()`系统调用，通过`nullRef`变量介绍一种新的细节。Go中所有的 `null` 用 `nil` 关键字代表。然而，这是个有类型的值，也就是通过没有类型的`syscall`直接传递会导致运行时错误，或类型转换错误——无论哪种错误，都是糟糕的状况。在本例中修复非常简单：声明一个0值的变量，例如整数。0值现在可以被接收的Windows函数可靠地传递和解释为`null`值。
 
-不像前面`OpenProcess()`系统调用，通过`nullRef`变量介绍一种新的细节。Go中所有的 `null` 用 `nil` 关键字代表。然而，这是个有类型的值，也就是通过没有类型的`syscall`直接传递会导致运行时错误，或类型转换错误——无论哪种错误，都是糟糕的状况。在本例中修复非常简单：声明一个0值的变量，例如整数。0值现在可以被接收的Windows函数可靠地传递和解释为空值。
+
+### 用Windows API `WriteProcessMemory` 写内存
+
+下一步，使用`WriteProcessMemory`函数写入前面使用`VirtualAllocEx()`函数初始化过的远端进程内存。 清单12-9中，通过按文件路径调用DLL使流程简单，而并非将整个DLL代码写入内存。
+
+```go
+func WriteProcessMemory(i *Inject) error {
+	var nBytesWritten *byte
+	dllPathBytes, err := syscall.BytePtrFromString(i.DllPath) 
+	if err != nil {
+		return err
+	}
+	writeMem, _, lastErr := ProcWriteProcessMemory.Call(
+		i.RemoteProcHandle, // HANDLE hProcess
+		i.Lpaddr, // LPVOID lpBaseAddress
+		uintptr(unsafe.Pointer(dllPathBytes)), // LPCVOID lpBuffer 
+		uintptr(i.DLLSize), // SIZE_T nSize
+		uintptr(unsafe.Pointer(nBytesWritten))) // SIZE_T *lpNumberOfBytesWritten
+	if writeMem == 0 {
+		return errors.Wrap(lastErr, "[!] ERROR : Can't write to process memory.")
+	}
+	return nil
+}
+```
+清单 12-9:
+将 DLL 文件路径写入远端进程的内存中（/ch-12/procInjector/winsys/inject.go）
+
+首先注意的是`syscall`中的`BytePtrFromString()`函数，这是个方便将`string`转换成`byte`切片的函数，将返回结果赋值给`dllPathBytes`。
+
+最后，看下`unsafe.Pointer`的作用。`ProcWriteProcessMemory.Call`中的第三个参数在Windows API规范中定义为“lpBuffer——指向包含写入指定进程的地址空间的数据缓冲区的指针。” 为了将 `dllPathBytes` 中定义的 Go 指针传递 Windows 函数，使用`unsafe.Pointer`来规避类型转换。这里要说明的最后一点是 `uintptr` 和 `unsafe.Pointer` 可以放心地使用，因为这两者都是内联使用，并且没有赋值给返回值来重用。
