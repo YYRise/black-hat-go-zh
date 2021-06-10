@@ -463,3 +463,15 @@ func VirtualFreeEx(i *Inject) error {
 `ProcVirtualFreeEx.Call()` 函数有四个参数。第一个是远端进程句柄，与要释放其内存的进程关联。 下一个是指向释放内存地址的指针。
 
 注意，变量`size`赋值为0。 如 Windows API 规范中所规定那样，把整个内存区间释放回可回收的状态这是必要的。 最后，我们通过`MEM_RELEASE` 操作来完全释放进程内存（以及我们对进程注入的讨论）。
+
+### 附加练习
+
+像本书中的其他章节那样，如果您在此过程中进行编码和实验，本章会有很高的价值。因此，我们用一些挑战或可能性来结束本节，以扩展已经涵盖的想法：
+
+- 创建代码注入最重要的方面之一是维护一个足以检查和调试进程执行的可用工具链。 下载并安装Process Hacker 和 Process Monitor ，然后，使用 Process Hacker，定位 `Kernel32` 和 `LoadLibrary` 的内存地址。在此过程中，找到进程句柄并查看完整性级别以及固有特权。现在将您的代码注入同一个进程并定位线程。
+
+- 可以将流程注入示例扩展为不那么琐碎。例如，不是从磁盘文件路径加载有效负载，而是使用 MsfVenom 或 Cobalt Strike 生成 shellcode 并将其直接加载到进程内存中。这需要修改 `VirtualAllocEx` 和 `LoadLibrary`。
+
+- 创建DLL并将整个DLL加载到内存中。这类似于之前的练习：唯一的不同是加载整个 DLL 而不是 shellcode。 使用Process Monitor设置路径过滤器、进程过滤器或两者都设置，并观察系统 DLL 加载顺序。什么妨碍 DLL 加载顺序劫持？
+
+- 使用Frida [https://www.frida.re/](https://www.frida.re/)把Google Chrome V8 JavaScript 引擎注入到受害进程中。它在移动安全从业者和开发人员中拥有大量的用户：可以使用它来执行运行时分析、进程内调试和检测。还可以将 Frida 与其他操作系统一起使用，例如 Windows。创建自己的 Go 代码，将 Frida 注入受害者进程，并使用 Frida 在同一进程中运行 JavaScript。熟悉 Frida 的工作方式需要进行一些研究，但我们保证这是非常值得的。
