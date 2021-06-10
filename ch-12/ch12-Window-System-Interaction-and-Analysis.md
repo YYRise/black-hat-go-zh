@@ -397,3 +397,34 @@ func CreateRemoteThread(i *Inject) error {
 ```
 清单 12-11：
 使用 `CreateRemoteThread()` Windows 函数执行进程注入 （/ch-12/procInjector/winsys/inject.go）
+
+`ProcCreateRemoteThread.Call()`函数总共需要七个参数，但在示例中只用到了三个。 相关的参数是包含被入侵进程句柄的`RemoteProcHandle`，包含线程要调用的start routine 的`LoadLibAddr`（在本例中为 LoadLibraryA()），最后是指向保存有效负载位置的虚拟内存的指针。
+
+
+### 用Windows API `WaitforSingleObject` 验证注入
+
+使用Windows的`WaitforSingleObject()`函数来识别特定对象何时处于信号状态。 这和进程注入有关，因为我们希望等待线程执行，防止其过早退出。 简要讨论清单 12-12 中的函数定义。
+
+```go
+func WaitForSingleObject(i *Inject) error {
+	var dwMilliseconds uint32 = INFINITE
+	var dwExitCode uint32
+	rWaitValue, _, lastErr := ProcWaitForSingleObject.Call( 
+		i.RThread, // HANDLE hHandle
+		uintptr(dwMilliseconds)) // DWORD dwMilliseconds
+	if rWaitValue != 0 {
+		return errors.Wrap(lastErr, "[!] ERROR : Error returning thread wait state.")
+	}
+	success, _, lastErr := ProcGetExitCodeThread.Call( 
+		i.RThread, // HANDLE hThread
+		uintptr(unsafe.Pointer(&dwExitCode))) // LPDWORD lpExitCode
+	if success == 0 {
+		return errors.Wrap(lastErr, "[!] ERROR : Error returning thread exit code.")
+	}
+	closed, _, lastErr := ProcCloseHandle.Call(i.RThread) // HANDLE hObject 
+	if closed == 0 {
+		return errors.Wrap(lastErr, "[!] ERROR : Error closing thread handle.")
+	}
+	return nil
+}
+```
