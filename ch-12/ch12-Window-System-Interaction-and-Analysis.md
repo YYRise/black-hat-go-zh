@@ -681,3 +681,56 @@ fmt.Printf("[+] DLLCharacteristics: %#x\n", oh32.DllCharacteristics)
 `Sections Alignment` 当section被加载到内存时支持字节对齐：0x1000 是一个相当标准的值。 `File Alignment` 支持原始磁盘上section的字节对齐：0x200 (512K) 也是一个常见值。 需要修改这些值代码才能工作，如果手动操作的话，则必须使用十六进制编辑器和调试器。
 
 Optional Header 包含很多条目。建议您浏览 https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-windows-specific-fields-image-only 上的文档，以全面了解每一条，而不是对每一条进行转述。
+
+
+#### 解析Data Directory
+
+在运行时，Windows的可执行文件必须知道重要的信息，比如，如何使用链接的 DLL 或如何允许其他应用程序进程使用可执行文件必须提供的资源。二进制文件还需要管理粒度数据，例如线程存储。这是Data Directory的主要功能。
+
+`Data Directory` 是Optional Header最后128字节，专门与二进制图像有关。我们使用它来维护一个包含单个目录到数据位置的偏移地址和数据大小的引用表。WINNT.H 头文件中定义了 16 个目录条目，WINNT.H 头文件是一个核心的 Windows 头文件，定义了在整个 Windows 操作系统中使用的各种数据类型和常量。请注意，并非所有目录都在使用中，因为有些目录是 Microsoft 保留的或未实现的。
+可以在 https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-data-directories-image-only 上参考数据目录的完整列表及其预期用途的详细信息。同样，很多信息都与每个单独的目录相关联，因此建议花一些时间真正研究并熟悉它们的结构。
+
+让我们使用清单 12-21 中的代码探索Data Directory中的几个目录条目。
+
+```go
+// Print Data Directory
+fmt.Println("[-----Data Directory-----]")
+var winnt_datadirs = []string{ 
+	"IMAGE_DIRECTORY_ENTRY_EXPORT",
+	"IMAGE_DIRECTORY_ENTRY_IMPORT",
+	"IMAGE_DIRECTORY_ENTRY_RESOURCE",
+	"IMAGE_DIRECTORY_ENTRY_EXCEPTION",
+	"IMAGE_DIRECTORY_ENTRY_SECURITY",
+	"IMAGE_DIRECTORY_ENTRY_BASERELOC",
+	"IMAGE_DIRECTORY_ENTRY_DEBUG",
+	"IMAGE_DIRECTORY_ENTRY_COPYRIGHT",
+	"IMAGE_DIRECTORY_ENTRY_GLOBALPTR",
+	"IMAGE_DIRECTORY_ENTRY_TLS",
+	"IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG",
+	"IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT",
+	"IMAGE_DIRECTORY_ENTRY_IAT",
+	"IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT",
+	"IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR",
+	"IMAGE_NUMBEROF_DIRECTORY_ENTRIES",
+}
+for idx, directory := range oh32.DataDirectory { 
+	fmt.Printf("[!] Data Directory: %s\n", winnt_datadirs[idx])
+	fmt.Printf("[+] Image Virtual Address: %#x\n", directory.VirtualAddress)
+	fmt.Printf("[+] Image Size: %#x\n", directory.Size)
+}
+/* OUTPUT
+[-----Data Directory-----]
+[!] Data Directory: IMAGE_DIRECTORY_ENTRY_EXPORT 
+[+] Image Virtual Address: 0x2a7b6b0 
+[+] Image Size: 0x116c y
+[!] Data Directory: IMAGE_DIRECTORY_ENTRY_IMPORT 
+[+] Image Virtual Address: 0x2a7c81c
+[+] Image Size: 0x12c
+--snip--
+*/
+```
+清单 12-21：解析Data Directory的地址偏移量和大小 (/ch-12/peParser/main.go)
+
+Data Directory列表由 Microsoft 静态定义，这意味着目录按名称保留在固定排序的列表中。因此，也被当成常数。 使用切片变量`winnt_datadirs`来存储各个目录条目，以便我们可以将名称与索引位置进行协调。具体来说，Go PE 包将Data Directory实现为结构对象，因此我们需要遍历每个条目以提取各个目录条目，以及它们各自的地址偏移和大小属性。 `for` 循环从索引 0 开始的，所以我们只输出相对于其索引位置的每个切片条目。
+
+显示到标准输出的目录条目是 `IMAGE _DIRECTORY_ENTRY_EXPORT`，或 `the EAT`, 和 `IMAGE_DIRECTORY_ENTRY_IMPORT`， 或 `IAT`。这些目录中的每一个都分别维护一个与正在运行的 Windows 可执行文件相关的导出和导入函数的表。进一步查看 `IMAGE_DIRECTORY_ENTRY_EXPORT`，将看到包含实际表数据偏移量的虚拟地址，以及其中包含的数据大小。
