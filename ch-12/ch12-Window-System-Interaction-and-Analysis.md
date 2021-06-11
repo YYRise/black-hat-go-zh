@@ -552,3 +552,65 @@ func main() {
 清单 12-15： 解析 DOS Header 和 Stub 的值 (/ch-12/peParser/main.go)
 
 使用Go的`file Reader`实例从文件头开始向前读取96字节，来确认初始二进制签名。 回想下前两个字节规定ASCII 的 `MZ`。 PE包方便了将PE数据结构转换成其他易使用的数据。 但是，仍然需要手动二进制读取器和按位功能来实现它。我们对 0x3c 引用的偏移值执行二进制读取，然后准确读取由值 0x50 0x45 (PE) 和 2 0x00 字节组成的 4 个字节。
+
+#### 解析COFF File Header
+
+继续往下看PE文件结构，紧跟在DOS Stub之后的是COFF File Header。 使用清单12-16中的代码来解析COFF File Header，然后讨论它的一些更有趣的属性。
+
+```go
+	// Create the reader and read COFF Header
+	sr := io.NewSectionReader(f, 0, 1<<63-1)
+	_, err := sr.Seek(pe_sig_offset+4, os.SEEK_SET)
+	check(err)
+	binary.Read(sr, binary.LittleEndian, &pefile.FileHeader)
+```
+清单 12-16：解析COFF File Header (/ch-12/peParser/main.go)
+
+创建了一个新的 `SectionReader`，从文件开头的位置 0 开始，读取到 int64 的最大值。 然后`sr.Seek()` 函数重置位置立即开始读，遵循 PE 签名偏移量和值（回想字面值 PE + 0x00 + 0x00）。最后，执行二进制读把字节编码到`pefile`对象中的`FileHeader`结构中。回想一下，之前在调用 `pe.Newfile()` 时创建了 `pefile`。
+
+Go文档使用清单 12-17 中定义的结构定义定义了`type FileHeader`。该结构与 Microsoft 记录的 PE COFF File Header格式非常吻合（定义在https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#coff-file-header-object-and-image）。
+
+```go
+type FileHeader struct {
+	Machine uint16
+	NumberOfSections uint16
+	TimeDateStamp uint32
+	PointerToSymbolTable uint32
+	NumberOfSymbols uint32
+	SizeOfOptionalHeader uint16
+	Characteristics uint16
+}
+```
+清单 12-17：Go PE 包中的原生 PE File Header 结构
+
+该结构中除 `Machine` 值（也就是 PE 目标系统架构）之外，还需要注意的是 `NumberOfSections` 属性。属性中含有很多在Section Table中定义的section，这些section紧跟在header后面。如果打算通过添加新section来给 PE 文件留后门，则需要更新 `NumberOfSections` 值。但是，其他策略可能不需要更新此值，例如在其他可执行部分（例如 CODE、.text 等）中搜索连续未使用的 0x00 或 0xCC 值（一种定位可用于植入 shellcode 的内存部分的方法），因为部分的数量保持不变。
+
+最后，您可以使用以下打印语句输出一些更有趣的 COFF File Header 的值（清单 12-18）。
+
+```go
+	// Print File Header
+	fmt.Println("[-----COFF File Header-----]")
+	fmt.Printf("[+] Machine Architecture: %#x\n", pefile.FileHeader.Machine)
+	fmt.Printf("[+] Number of Sections: %#x\n", pefile.FileHeader.NumberOfSections)
+	fmt.Printf("[+] Size of Optional Header: %#x\n", pefile.FileHeader.SizeOfOptionalHeader)
+	// Print section names
+	fmt.Println("[-----Section Offsets-----]")
+	fmt.Printf("[+] Number of Sections Field Offset: %#x\n", pe_sig_offset+6) u
+	// this is the end of the Signature header (0x7c) + coff (20bytes) + oh32 (224bytes)
+	fmt.Printf("[+] Section Table Offset: %#x\n", pe_sig_offset+0xF8)
+
+/* OUTPUT
+[-----COFF File Header-----]
+[+] Machine Architecture: 0x14c v
+[+] Number of Sections: 0x8 w
+[+] Size of Optional Header: 0xe0 x
+[-----Section Offsets-----]
+[+] Number of Sections Field Offset: 0x15e y
+[+] Section Table Offset: 0x250 z
+*/
+
+```
+清单 12-18：终端输出 COFF File Header 的值 (/ch-12/peParser/main.go)
+
+可以通过计算 PE 签名的偏移量 + 4 个字节 + 2 个字节（也就是加 6 个字节）来定位 `NumberOfSections` 的值。 代码中已经定义了 `pe_sig_offset`，因此只加6个字节就好了。 当审查 Section Table 结构时再更详细地去研究section。
+
