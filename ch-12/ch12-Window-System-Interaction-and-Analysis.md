@@ -614,3 +614,70 @@ type FileHeader struct {
 
 可以通过计算 PE 签名的偏移量 + 4 个字节 + 2 个字节（也就是加 6 个字节）来定位 `NumberOfSections` 的值。 代码中已经定义了 `pe_sig_offset`，因此只加6个字节就好了。 当审查 Section Table 结构时再更详细地去研究section。
 
+生成的输出描述的是0x14c（即`IMAGE_FILE_MACHINE_I386`，更多信息在https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#machine-types。 ） 的 `Machine Architecture` 值。section的数量是 0x8，表示在Section Table中存在8个条目。 Optional Header（接下来会去研究）根据体系结构具有可变长度：值为0xe0（十进制224），符合32位系统。 最后两个section被认为是更方便的输出。特别地，`Sections Field Offset` 支持section的数量偏移量，而 `Section Table Offset` 支持Section Table的位置偏移。例如，如果添加 shellcode，则两个偏移量值都需要修改。
+
+
+#### 解析Optional Header
+
+PE文件结构中的下一个header是`Optional Header` ，一个可执行的二进制image会有个Optional Header，其向加载器提供重要数据，将可执行的二进制加载到虚拟内存中。header中含有大量数据，因此这里仅介绍几个，以便您习惯于浏览此结构。
+
+首先，需要根据架构对相关字节长度执行二进制读取，如清单 12-19 中所述。如果编写更全面的代码，则需要检查架构（例如，x86 与 x86_64）以使用适当的 PE 数据结构。
+
+```go
+// Get size of OptionalHeader
+var sizeofOptionalHeader32 = uint16(binary.Size(pe.OptionalHeader32{}))
+var sizeofOptionalHeader64 = uint16(binary.Size(pe.OptionalHeader64{}))
+var oh32 pe.OptionalHeader32
+var oh64 pe.OptionalHeader64
+// Read OptionalHeader
+switch pefile.FileHeader.SizeOfOptionalHeader {
+case sizeofOptionalHeader32:
+	binary.Read(sr, binary.LittleEndian, &oh32)
+case sizeofOptionalHeader64:
+	binary.Read(sr, binary.LittleEndian, &oh64)
+}
+```
+
+清单 12-19:读取 Optional Header 字节 (/ch-12/peParser/main.go)
+
+代码中初始化了两个变量，`sizeOfOptionalHeader32`和`sizeOfOptionalHeader32`，分别为 224 字节和 240 字节。这是一个 x86 二进制文件，因此我们将在代码中使用前一个变量。紧跟在变量声明之后的是 `pe.OptionalHeader32` 和 `pe.OptionalHeader64` 接口的初始化，含有 `OptionalHeader` 数据。 最后，执行二进制的读，并将其编码到相应的数据结构中：基于32位二进制的 `oh32` 。
+
+让我们描述一些Optional Header更值得注意的项。清单 12-20 中是相应的打印语句和后续输出。
+
+```go
+// Print Optional Header
+fmt.Println("[-----Optional Header-----]")
+fmt.Printf("[+] Entry Point: %#x\n", oh32.AddressOfEntryPoint)
+fmt.Printf("[+] ImageBase: %#x\n", oh32.ImageBase)
+fmt.Printf("[+] Size of Image: %#x\n", oh32.SizeOfImage)
+fmt.Printf("[+] Sections Alignment: %#x\n", oh32.SectionAlignment)
+fmt.Printf("[+] File Alignment: %#x\n", oh32.FileAlignment)
+fmt.Printf("[+] Characteristics: %#x\n", pefile.FileHeader.Characteristics)
+fmt.Printf("[+] Size of Headers: %#x\n", oh32.SizeOfHeaders)
+fmt.Printf("[+] Checksum: %#x\n", oh32.CheckSum)
+fmt.Printf("[+] Machine: %#x\n", pefile.FileHeader.Machine)
+fmt.Printf("[+] Subsystem: %#x\n", oh32.Subsystem)
+fmt.Printf("[+] DLLCharacteristics: %#x\n", oh32.DllCharacteristics)
+
+/* OUTPUT
+[-----Optional Header-----]
+[+] Entry Point: 0x169e682 u
+[+] ImageBase: 0x400000 v
+[+] Size of Image: 0x3172000 w
+[+] Sections Alignment: 0x1000 x
+[+] File Alignment: 0x200 y
+[+] Characteristics: 0x102
+[+] Size of Headers: 0x400
+[+] Checksum: 0x2e41078
+[+] Machine: 0x14c
+[+] Subsystem: 0x2
+[+] DLLCharacteristics: 0x8140
+*/
+```
+清单 12-20：输出 Optional Header (/ch-12/peParser/main.go)
+
+假设目标是给PE文件开后门，需要知道 `ImageBase` 和 `Entry Point`，以便劫持和内存跳转到 shellcode 的位置或由Section Table 条目数定义的新section。`ImageBase` 是图像加载到内存后的第一个字节的地址，而 `Entry Point` 是相对于 `ImageBase` 的可执行代码的地址。 `Image` 的 `Size` 是图像在加载到内存中时的实际大小。这个值需要调整来适应图像大小的增加，如果你添加了一个包含 shellcode 的section，就会发生这种情况。
+
+`Sections Alignment` 当section被加载到内存时支持字节对齐：0x1000 是一个相当标准的值。 `File Alignment` 支持原始磁盘上section的字节对齐：0x200 (512K) 也是一个常见值。 需要修改这些值代码才能工作，如果手动操作的话，则必须使用十六进制编辑器和调试器。
+
+Optional Header 包含很多条目。建议您浏览 https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-windows-specific-fields-image-only 上的文档，以全面了解每一条，而不是对每一条进行转述。
