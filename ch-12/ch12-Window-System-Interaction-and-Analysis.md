@@ -734,3 +734,74 @@ for idx, directory := range oh32.DataDirectory {
 Data Directory列表由 Microsoft 静态定义，这意味着目录按名称保留在固定排序的列表中。因此，也被当成常数。 使用切片变量`winnt_datadirs`来存储各个目录条目，以便我们可以将名称与索引位置进行协调。具体来说，Go PE 包将Data Directory实现为结构对象，因此我们需要遍历每个条目以提取各个目录条目，以及它们各自的地址偏移和大小属性。 `for` 循环从索引 0 开始的，所以我们只输出相对于其索引位置的每个切片条目。
 
 显示到标准输出的目录条目是 `IMAGE _DIRECTORY_ENTRY_EXPORT`，或 `the EAT`, 和 `IMAGE_DIRECTORY_ENTRY_IMPORT`， 或 `IAT`。这些目录中的每一个都分别维护一个与正在运行的 Windows 可执行文件相关的导出和导入函数的表。进一步查看 `IMAGE_DIRECTORY_ENTRY_EXPORT`，将看到包含实际表数据偏移量的虚拟地址，以及其中包含的数据大小。
+
+#### 解析**Section Table**
+
+*Section Table* 是紧跟在 Optional Header 之后的PE字节结构。它包含 Windows 可执行二进制文件中每个相关section的详细信息，像执行代码和初始化数据地址偏移。条目数与 COFF File Header 中定义的 `NumberOfSections` 相匹配。可以在 PE 签名偏移量 + 0xF8 处找到 Section Table。在十六进制编辑器中查看此 section（图 12-8）。
+
+![](https://github.com/YYRise/black-hat-go/raw/master/ch-12/images/12-8.png)
+图12-8：十六进制编辑器查看 Section Table
+
+图中的 Section Table 以 `.text` 开始，但也可能以 CODE section 开始，这取决于二进制的编译器。.text（或 CODE）部分包含可执行代码，而下一部分 .rodata 包含只读常量数据。 .rdata 部分包含资源数据，.data 部分包含初始化数据。每个部分的长度至少为 40 个字节。
+
+在COFF File Header 中可以访问Section Table。也可以使用清单 12-22 中的代码单独地访问每一部分。
+
+```go
+    s := pefile.Section(".text")
+    fmt.Printf("%v", *s) 
+/* Output
+{{.text 25509328 4096 25509376 1024 0 0 0 0 1610612768} [] 0xc0000643c0 0xc0000643c0} 
+*/
+```
+
+清单 12-22： 解析 Section Table 中的特定部分 (/ch-12/peParser/main.go)
+
+另一个选项是像清单 12-23那样迭代整个 Section Table。
+
+```go
+    fmt.Println("[-----Section Table-----]")
+    for _, section := range pefile.Sections { u
+        fmt.Println("[+] --------------------")
+        fmt.Printf("[+] Section Name: %s\n", section.Name)
+        fmt.Printf("[+] Section Characteristics: %#x\n", section.Characteristics)
+        fmt.Printf("[+] Section Virtual Size: %#x\n", section.VirtualSize)
+        fmt.Printf("[+] Section Virtual Offset: %#x\n", section.VirtualAddress)
+        fmt.Printf("[+] Section Raw Size: %#x\n", section.Size)
+        fmt.Printf("[+] Section Raw Offset to Data: %#x\n", section.Offset)
+        fmt.Printf("[+] Section Append Offset (Next Section): %#x\n", section.Offset+section.Size)
+    }
+/* OUTPUT
+[-----Section Table-----]
+[+] --------------------
+[+] Section Name: .text
+[+] Section Characteristics: 0x60000020
+[+] Section Virtual Size: 0x1853dd0
+[+] Section Virtual Offset: 0x1000
+[+] Section Raw Size: 0x1853e00
+[+] Section Raw Offset to Data: 0x400
+[+] Section Append Offset (Next Section): 0x1854200 | [+] --------------------
+[+] Section Name: .rodata
+[+] Section Characteristics: 0x60000020
+[+] Section Virtual Size: 0x1b00
+[+] Section Virtual Offset: 0x1855000
+[+] Section Raw Size: 0x1c00
+[+] Section Raw Offset to Data: 0x1854200
+[+] Section Append Offset (Next Section): 0x1855e00 --snip--
+*/
+```
+
+清单 12-23：解析 Section Table 的所有部分 (/ch-12/peParser/main.go)
+
+在这里，我们遍历 Section Tableu 中的所有部分，并将 `name , virtual size, virtual address, raw size, and raw offset` 写到标准输出。此外，如果想要追加一个新部分，我们会计算下一个 40 字节的偏移地址。`characteristics` 值描述了该部分是如何成为二进制一部分的。例如，`.text` 部分的值为0x60000020。`Section Flags` 数据相关的引用在 *https://docs.microsoft.com/en-us /windows/win32/debug/pe-format#section-flags* （表12-2），可以看到三个独立的属性组成了该值。
+
+表12-2：Section Flags的Characteristic
+
+| 标记                  | 值         | 描述                   |      |      |      |
+| --------------------- | ---------- | ---------------------- | ---- | ---- | ---- |
+| IMAGE_SCN_CNT_CODE    | 0x00000020 | 该部分含有可执行的代码 |      |      |      |
+| IMAGE_SCN_MEM_EXECUTE | 0x20000000 | 该部分可作为代码被执行 |      |      |      |
+| IMAGE_SCN_MEM_READ    | 0x40000000 | 该部分可被读取         |      |      |      |
+
+第一个值是 0x00000020 （IMAGE_SCN_CNT_CODE），表示该部分含有可执行的代码。第二个值是 0x20000000（IMAGE_SCN_MEM_EXECUTE），表示该部分可作为代码被执行。最后，第三个值是 0x40000000 （IMAGE_SCN_MEM_READ），允许该部分可被读取。因此，所有加在一起的值为 0x60000020。如果添加个新部分，请记住您需要使用适当的值更新所有这些属性。
+
+对 PE 文件数据结构的讨论到此结束。我们知道，这是一个简短的概述。每一部分都可以是一个章节。但是，应该足以让您使用 Go 作为操作任意数据结构的手段。 PE 数据结构非常复杂，值得花时间和精力来熟悉它的所有组件。
