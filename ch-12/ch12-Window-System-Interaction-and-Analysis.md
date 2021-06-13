@@ -855,3 +855,89 @@ C 代码可以通过外部文件包含语句提供。也可以直接嵌入到 Go
 
 > 虽然CGO包非常方便，允许你从Go代码调用C库，也可以从C代码调用Go库，但使用它可以摆脱Go的内存管理器和垃圾处理。如果想使用Go的内存管理，则要在Go中分配内存，然后把它传递给C。否则，Go的内存管理器不会知道你使用C内存管理器所做的分配，而且这些分配不会被释放，除非你调用C的原生的 `free()` 方法。不正确地释放内存可能会对Go代码产生不利影响。最后，就像在Go中打开文件句柄一样，在Go函数中使用defer来确保Go引用的所有C内存都被垃圾回收。
 
+### C中构建Go
+
+就像我们可以将C代码嵌入Go程序一样，我们也可以将Go代码嵌入C程序。这很有用，因为在编写本文时，Go编译器还不能将我们的程序构建到dll中。这意味着我们不能单独使用Go构建诸如反射DLL注入有效载荷(就像我们在本章前面创建的那样)之类的实用程序。
+
+但是，我们可以将Go代码构建到C归档文件中，然后使用C将归档文件构建到DLL中。在本节中，我们将通过将Go代码转换为C归档文件来构建一个DLL。然后，我们将使用现有的工具将DLL转换为shellcode，这样我们就可以在内存中注入并执行它。让我们从Go代码（清单12-25）开始，将代码保存到main.go文件中。
+
+```go
+package main 
+
+import "C"
+import "fmt" 
+//export Start 
+func Start() {
+	fmt.Println("YO FROM GO") 
+}
+
+func main() { 
+}
+```
+
+清单 12-25：Go 负载 (/ch-12/dllshellcode/main.go)
+
+导入 C 以将 CGO 包含到构建中。接下来，使用注释告诉 Go 我们要导出 C 归档中的函数。最后，我们定义要转换为 C 的函数。 `main()` 函数可以保持为空。
+
+要构建C归档文件，执行以下命令:
+
+```shell
+> go build -buildmode=c-archive
+```
+
+现在应该有两个文件了，一个名为 `dllshellcode.a` 的归档文件，和一个名为 `dllshellcode.h` 的相关头文件。我们还不能完全使用这些。我们还不能用这些。我们必须用C语言构建一个垫片，并强制编译器包含 `dllshellcode.a` 。一种优雅的解决方案是使用函数表。创建一个包含清单 12-26 中代码的文件。调用 `scratch.c` 文件。
+
+```c
+#include "dllshellcode.h" 
+void (*table[1]) = {Start};
+```
+
+清单 12-26： 保存在 `scratch.c` 文件中的函数表 (/ch-12/dllshellcode/scratch.c)
+
+现在可以使用GCC通过以下命令将 `scratch.c` C文件构建到DLL中:
+
+```shell
+> gcc -shared -pthread -o x.dll scratch.c dllshellcode.a -lWinMM -lntdll -lWS2_32
+```
+
+为了将DLL转换为shellcode，我们使用sRDI (https://github.com/monoxgas/sRDI/)，这是一个具有大量功能的优秀实用程序。首先，在Windows和GNU/Linux机器(可选)上使用Git下载repo，因为您可能会发现GNU/Linux是一个更容易获得的Python 3环境。本练习需要 Python 3，因此如果尚未安装，请安装它。
+
+在 sRDI 目录下，执行 python3 shell。使用以下代码生成导出函数的哈希：
+
+```shell
+>>> from ShellCodeRDI import * 
+>>> HashFunctionName('Start') 
+1168596138
+```
+
+sRDI工具将使用散列来识别稍后生成的shellcode中的函数。
+
+接下来，利用PowerShell实用程序来生成和执行shellcode。为了方便起见，我们将使用来自PowerSploit (https:// github.com/PowerShellMafia/PowerSploit/)的一些实用程序，这是一套PowerShell实用程序，我们可以利用它注入shellcode。可以使用 Git 下载它。从 PowerSploit\CodeExecution 目录中，启动一个新的 PowerShell shell：
+
+```shell
+c:\tools\PowerSploit\CodeExecution> powershell.exe -exec bypass 
+Windows PowerShell
+Copyright (C) 2016 Microsoft Corporation. All rights reserved.
+```
+
+现在从PowerSploit和sRDI导入两个PowerShell模块：
+
+```shell
+PS C:\tools\PowerSploit\CodeExecution> Import-Module .\Invoke-Shellcode.ps1 
+PS C:\tools\PowerSploit\CodeExecution> cd ..\..\sRDI
+PS C:\tools\sRDI> cd .\PowerShell\
+PS C:\tools\sRDI\PowerShell> Import-Module .\ConvertTo-Shellcode.ps1
+```
+
+导入这两个模块后，使用 sRDI 中的 `ConvertTo-Shellcode` 从 DLL 生成 shellcode，然后将其传递到 PowerSploit 中的 `Invoke-Shellcode` 中以演示注入。一旦执行，应该观察 Go 代码执行：
+
+```shell
+PS C:\tools\sRDI\PowerShell> Invoke-Shellcode -Shellcode (ConvertTo-Shellcode -File C:\Users\tom\Downloads\x.dll -FunctionHash 1168596138)
+
+Injecting shellcode into the running PowerShell process! 
+Do you wish to carry out your evil plans?
+[Y] Yes [N] No [S] Suspend [?] Help (default is "Y"): Y 
+YO FROM GO
+```
+
+消息 `YO FROM Go` 表明我们已经成功地从转换为 shellcode 的 C 二进制文件中启动了我们的 Go 有效负载。这解锁了许多可能性。
