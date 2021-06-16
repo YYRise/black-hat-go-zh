@@ -52,3 +52,133 @@ type Chunk struct {
 }
 ```
 清单 13-2：定义Chunk结构体 (/ch-13/imgInject/pnglib/commands.go)
+
+
+## 读取图片的字节数据
+
+Go语言能相对容易地处理二进制数据的读写，这在一定程度上要归功于 `binary` 包（在第6章的时候介绍过），但是在解析PNG数据前需要先打开文件来读取。 创建`PreProcessImage()` 函数，参数为 `*os.File` 类型的文件句柄，且返回值为 `*bytes.Reader` 类型（清单13-3）。
+
+```go
+//PreProcessImage reads to buffer from file handle
+func PreProcessImage(dat *os.File) (*bytes.Reader, error) {
+	stats, err := dat.Stat()
+	if err != nil {
+		return nil, err
+	}
+	var size = stats.Size()
+	b := make([]byte, size)
+	bufR := bufio.NewReader(dat)
+	_, err = bufR.Read(b)
+	bReader := bytes.NewReader(b)
+
+	return bReader, err
+}
+```
+清单 13-3：定义 `PreProcessImage()` 函数 (/ch-13/imgInject/utils/reader.go)
+
+函数打开文件对象，以获取用于抓取大小信息的 `FileInfo` 结构体。 接下来的几行代码用过 `bufio.NewReader()` 实例化一个 `Reader` 实例，然后调用 `bytes.NewReader()` 生成 `*bytes.Reader` 实例。 函数返回一个 `*bytes.Reader` 类型，用于开始使用 `binary` 包读取字节数据。 先读取头数据，再读取序列块。
+
+### 读取头数据
+
+使用定义PNG文件的前8个字节验证文件是否是PNG文件，构建 `validate()` 方法（清单13-4）。
+
+```go
+func (mc *MetaChunk) validate(b *bytes.Reader) {
+	var header Header
+
+	if err := binary.Read(b, binary.BigEndian, &header.Header); err != nil {
+		log.Fatal(err)
+	}
+	bArr := make([]byte, 8)
+	binary.BigEndian.PutUint64(bArr, header.Header)
+	if string(bArr[1:4]) != "PNG" {
+		log.Fatal("Provided file is not a valid PNG format")
+	} else {
+		fmt.Println("Valid PNG so let us continue!")
+	}
+}
+```
+清单 13-4: 验证是否是 PNG 文件 (/ch-13/imgInject/pnglib/commands.go)
+
+尽管此方法可能看起来并不太复杂，但它引入了几个新条目。 首先，也是最明显的一个是 `binary.Read()` 函数，该函数从 `bytes.Reader` 复制8个字节到 `Header` 结构体中。 还记得定义的定义的 `Header` 结构体中，字段类型为 `uint64`（清单13-1），相当于8个字节。 同样值得注意的是， `binary` 包提供了通过 `binary.BigEndian` 和 `binary.LittleEndian` 分别读取 `Most Significant Bit` 和 `Least Significant Bit` 格式的方法。 当进行二进制写时，这些函数也十分有用；例如，可以使用 `BigEndian` 将字节放在指定使用网络字节排序的线路上。
+
+二进制字节序函数还包含有助于将数据类型编码为文字数据类型（例如 uint64）的方法。 这里创建了一个长度为8的字节数组，并执行二进制读取，将数据复制到`uint64`数据类型中。 然后将字节转换为字符串形式，并使用切片和简单的字符串比较来确认1到4字节是PNG字符串，标志着这是个有效的图片文件格式。
+
+为优化查验文件是否为PNG文件这一过程，我们鼓励你查阅Go的`bytes` 包，因为含有简便的函数，可以使用这些函数快捷地进行文件头和之前提到过的PNG魔法字节序列的比较。 自己去研究吧。
+
+### 读取序列块
+
+一旦验证了是PNG文件，就可以写读取序列块的代码了。 头在PNG文件中只出现一次，但序列块是`SIZE, TYPE, DATA, 和 CRC` 的重复，直到`EOF`。 因此，需要合适地处理这种重复，Go中的条件循环可以方便地做到。 基于此，构建 `ProcessImage()` 方法，迭代地处理所有的数据块，直到文件末尾（清单13-5）。
+
+```go
+func (mc *MetaChunk) ProcessImage(b *bytes.Reader, c *models.CmdLineOpts) {
+// Snip code for brevity (Only displaying relevant lines from code block)
+	count := 1 //Start at 1 because 0 is reserved for magic byte
+	chunkType := ""
+	endChunkType := "IEND" //The last TYPE prior to EOF
+	for chunkType != endChunkType {
+		fmt.Println("---- Chunk # " + strconv.Itoa(count) + " ----")
+		offset := chk.getOffset(b)
+		fmt.Printf("Chunk Offset: %#02x\n", offset)
+		chk.readChunk(b)
+		chunkType = chk.chunkTypeToString()
+		count++
+	}
+}
+```
+清单13-5：`ProcessImage()` 方法 (/ch-13/imgInject/pnglib/commands.go)
+
+首先传递将一个对 `bytes.Reader` 内存地址指针 (`*bytes.Reader`) 的引用作为参数传递给 `ProcessImage()`。 刚刚创建的`validate()` 方法（清单13-4）也使用一个 `bytes.Reader` 指针的引用。 按照约定，对同一个内存地址指针位置的多次引用将允许对引用数据的可变访问。 这实质上意味着将 `bytes.Reader` 引用作为参数传递给 `ProcessImage()` 时，由于Header的大小，读取器已经前进了8个字节，因为访问的是相同的 `bytes.Reader` 实例。
+
+或者，没有传递指针， `bytes.Reader` 要么是相同的PNG图像数据的副本，要么是单独的唯一实例数据。 这是因为，读取header时推进指针不会在其他地方适当地推进读取器。 需要避免采用这种方式。 一方面，在不必要的情况下传递多个数据副本只是一种糟糕的约定。 更重要的是，每次传递副本时，它都被定位在文件的开头，迫使在读取块序列之前通过编程定义和管理它在文件中的位置。
+
+随着代码块的进行，定义 `count` 变量来记录图像文件包含多少块段。 `chunkType` 和 `endChunkType` 作为比较逻辑的一部分，将 `chunkType` 和 `endChunkType’s IEND` 来比较作为 EOF 的条件。
+
+最好知道每个块段从哪里开始——或者更确切地说，每个块在文件字节结构中的绝对位置，被称为 `offset`。 如果知道偏移值，非常容易地将负载植入到文件中。 例如，可以将一组偏移位置提供给解码器—— 一个单独的函数，用于收集每个已知偏移处的字节，然后将它们展开为您想要的有效负载。 要取到每个块的偏移，需要调用 `mc.getOffset(b)` 方法（清单13-6）。
+
+```go
+func (mc *MetaChunk) getOffset(b *bytes.Reader) {
+	offset, _ := b.Seek(0, 1)
+	mc.Offset = offset
+}
+```
+清单13-6：`getOffset(b)` 方法 (/ch-13/imgInject/pnglib/commands.go)
+
+`bytes.Reader` 中有个 `Seek()` 方法，该方法可以非常简单地取得当前位置。 `Seek()` 方法移动当前的读取或写入偏移，然后返回相对于文件开头的新的偏移。 该方法的第一个参数是要移动偏移量的字节数，第二个参数定义将要发生移动的位置。 第二个参数的可选值是0（文件开头），1（当前位置），和2（文件末尾）。 例如，想从当前位置左移8字节，可以使用 `b.Seek(-8,1)`。
+
+在这里，`b.Seek(0,1)` 表示从当前位置偏移0字节，因此仅仅返回当前偏移：本质上检索偏移量而不移动它。
+
+下面的方法中详细定义了如何读取实际的块段字节。 为了更容易理解，创建`readChunk()` 方法，然后创建读取每个子块的单独方法（清单13-7）。
+
+```go
+func (mc *MetaChunk) readChunk(b *bytes.Reader) {
+	mc.readChunkSize(b)
+	mc.readChunkType(b)
+	mc.readChunkBytes(b, mc.Chk.Size) 
+	mc.readChunkCRC(b)
+}
+func (mc *MetaChunk) readChunkSize(b *bytes.Reader) {
+	if err := binary.Read(b, binary.BigEndian, &mc.Chk.Size); err != nil { 
+		log.Fatal(err)
+	}
+}
+func (mc *MetaChunk) readChunkType(b *bytes.Reader) {
+	if err := binary.Read(b, binary.BigEndian, &mc.Chk.Type); err != nil {
+		log.Fatal(err)
+	}
+}
+func (mc *MetaChunk) readChunkBytes(b *bytes.Reader, cLen uint32) {
+	mc.Chk.Data = make([]byte, cLen) 
+	if err := binary.Read(b, binary.BigEndian, &mc.Chk.Data); err != nil {
+		log.Fatal(err)
+	}
+}
+func (mc *MetaChunk) readChunkCRC(b *bytes.Reader) {
+	if err := binary.Read(b, binary.BigEndian, &mc.Chk.CRC); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+清单 13-7：块读取方法 (/ch-13/imgInject/pnglib /commands.go)
+
+`readChunkSize(), readChunkType(), 和 readChunkCRC()` 是相似的。 每个读取 `uint32` 值到各自的 `Chunk` 结构体的字段中。 然而，`readChunkBytes()` 有点不一样。 因为图片数据的长度是可变的，需要将这个长度提供给`readChunkBytes()` 函数，以便知道要读取多少字节。 回想下，数据长度是在`SIZE`子块中维护的。 识别出 `SIZE` 的值，将其作为参数传递给 `readChunkBytes()` 用于定义切片的合适大小。 只有这样，才能将字节数据读入结构体的 `data` 字段。 这就是读取数据的方法，让我们继续研究如何写入字节数据。
