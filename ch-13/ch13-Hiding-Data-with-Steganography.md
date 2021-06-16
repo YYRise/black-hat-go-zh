@@ -182,3 +182,15 @@ func (mc *MetaChunk) readChunkCRC(b *bytes.Reader) {
 清单 13-7：块读取方法 (/ch-13/imgInject/pnglib /commands.go)
 
 `readChunkSize(), readChunkType(), 和 readChunkCRC()` 是相似的。 每个读取 `uint32` 值到各自的 `Chunk` 结构体的字段中。 然而，`readChunkBytes()` 有点不一样。 因为图片数据的长度是可变的，需要将这个长度提供给`readChunkBytes()` 函数，以便知道要读取多少字节。 回想下，数据长度是在`SIZE`子块中维护的。 识别出 `SIZE` 的值，将其作为参数传递给 `readChunkBytes()` 用于定义切片的合适大小。 只有这样，才能将字节数据读入结构体的 `data` 字段。 这就是读取数据的方法，让我们继续研究如何写入字节数据。
+
+## 写入图像字节数据以植入有效载荷
+
+尽管可以从许多复杂的隐写技术中进行选择来植入有效载荷，但在本节中，将重点介绍一种写入特定字节偏移量的方法。PNG 文件格式定义了规范中的 `critical` 和 `ancillary` 。critical 块是图像解码器处理图像所必需的。`ancillary` 是可选的，并提供对编码或解码不重要的各种元数据，例如时间戳和文本。
+
+因此， `ancillary` 块类型提供了覆盖现有块或插入新块的理想位置。在这里，我们将展示如何将新的字节片插入到 `ancillary` 块段中。
+
+### 定位块偏移量
+
+首先，需要在`ancillary`数据中确定适当的偏移量。您可以发现`ancillary`块，因为它们总是以小写字母开头。再次使用十六进制编辑器打开原始 PNG 文件，并前进到十六进制转储的末尾。
+
+每个有效的 PNG 图像都有一个`IEND` 块类型，指示文件的最后一个块（EOF 块）。
