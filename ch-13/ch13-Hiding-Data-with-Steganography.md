@@ -363,11 +363,179 @@ $ go run main.go -i images/battlecat.png -o newPNGfile --inject –offset \ 0x85
 如果一切都按照计划进行，`offset 0x85258` 现在应该包含一个新的rNDm块段，如图13-4所示。
 
 ![](https://github.com/YYRise/black-hat-go/raw/master/ch-13/images/13-4.png)
+图13-4 作为辅助块注入的有效载荷（例如*rNDm*）
 
-图13-3 作为辅助块注入的有效载荷（例如*rNDm*）
+恭喜——已经完成了第一个隐写程序！
 
-恭喜——已经写了第一个隐写程序！
+## 使用 XOR 编解码图片字节数据
 
-## 使用**XOR**编解码图片字节数据
+正如有许多类型的隐写术一样，也有许多技术用于混淆二进制文件中的数据。我们继续构建上一节中的示例程序。这次，使用模糊处理来隐藏有效负载的真正意图。
 
-正如有许多类型的隐写术一样，也有许多技术用于混淆二进制文件中的数据。我们继续构建上一节中的示例程序。这次，使用模糊处理来隐藏有效负载的真正意图。混淆可以隐藏有效负载，不让网络监视设备和端点安全解决方案看到。
+混淆可以隐藏有效负载，不让网络监视设备和端点安全解决方案看到。 例如，如果嵌入用于生成新的Meterpreter shell或Cobalt Strike信标的原始shellcode，当然希望确保它避免被检测到。 为此，要使用Exclusive OR位操作对数据进行加密和解密。
+
+`Exclusive OR (XOR)` 是两个二进制值之间的条件比较，当且仅当两个值不一样时返回true，否则的话返回false。 换句话说，如果x或y中有一个为真，这个命题为真，但如果两个都为真就不成立了。 可以在表13-1中看到这一点，因为x和y都是二进制输入值。
+
+表 13-1：XOR 真值表
+| x | y | x^y |
+| --- | --- | --- |
+| 0 | 1 | True 或 1 |
+| 1 | 0 | True 或 1 |
+| 0 | 0 | False 或 0 |
+| 1 | 1 | False 或 0 |
+
+可以使用此逻辑通过比较数据中的位与密钥中的位来混淆数据。 当两个值相等时，将有效负载中的位更改为0，当它们不同时，您将其更改为1。 让我们展开上一节中创建的代码，包括 `encodeDecode()` 函数，以及 `XorEncode()` 和 `XorDecode()` 函数。 将这些函数放在 `utils` 包中（清单 13-16）。
+
+```go
+func encodeDecode(input []byteu, key stringv) []byte {
+	var bArr = make([]byte, len(input))
+	for i := 0; i < len(input); i++ {
+		bArr[i] += input[i] ^ key[i%len(key)]
+	}
+	return bArr
+}
+```
+清单 13-16: `encodeDecode()` 函数 (/ch-13/imgInject/utils/encoders.go)
+
+`encodeDecode()` 函数以负载的字节切片和秘钥作为参数。 函数中创建 `bArr` 字节切片，并以输入的字节长度初始化（负载的长度）。 接下来，函数使用条件循环迭代输入字节数组的每个索引位置。
+
+在条件循环内，每次迭代都将当前索引的二进制值与从当前索引值的模和秘钥长度导出的二进制值进行XORs。 这可以使用一个比负载短的key。 当到达key的末尾时，模将强制下一次迭代使用key的第一个字节。 每次XOR操作的结果写到新 `bArr` 字节切片中，函数返回结果切片。
+
+清单13-17中的函数封装了 `encodeDecode()`函数，以方便编码和解码过程。
+
+```go
+// XorEncode returns encoded byte array
+func XorEncode(decode []byte, key string) []byte {
+	return encodeDecode(decode, key)
+}
+
+// XorDecode returns decoded byte array
+func XorDecode(encode []byte, key string) []byte {
+	return encodeDecode(encode, key)
+}
+```
+清单 13-17： `XorEncode()` 和 `XorDecode()` 函数(/ch-13/imgInject/utils/encoders.go)
+
+定义两个函数，`XorEncode()` 和 `XorDecode()`， 使用相同的参数，且返回相同的值。 这是因为编码过程和解码过程使用相同的XOR编码数据。 但是，分别定义这两个函数是让代码更清晰。 
+
+要在现有的程序中使用 XOR，需要修改清单13-8中创建的 `ProcessImage()` 逻辑。 使用 `XorEncode()` 函数加密负载来更新。 如清单13-18所示的修改，假设使用命令行参数将值传递给条件编码和解码逻辑。 
+
+```go
+// Encode Block
+if (c.Offset != "") && c.Encode {
+	var m MetaChunk
+	m.Chk.Data = utils.XorEncode([]byte(c.Payload), c.Key)
+	m.Chk.Type = chk.strToInt(c.Type)
+	m.Chk.Size = chk.createChunkSize()
+	m.Chk.CRC = chk.createChunkCRC()
+	bm := chk.marshalData()
+	bmb := bm.Bytes()
+	fmt.Printf("Payload Original: % X\n", []byte(c.Payload))
+	fmt.Printf("Payload Encode: % X\n", chk.Data)
+	utils.WriteData(b, c, bmb)
+}
+```
+清单 13-18： XOR 编码更新`ProcessImage()` (/ch-13/imgInject/pnglib/commands.go)
+
+
+函数调用 `XorEncode()` ，传递含有负载字节切片和key，即XOR的两个值，将返回的字节切片赋值给 `chk.Data`。 其余功能保持不变，并封送新块段，以便最终写入图像文件。
+
+程序的命令行运行应该产生类似于清单13-19中的结果。
+
+```sh
+$ go run main.go -i images/battlecat.png --inject --offset 0x85258 --encode \
+--key gophers --payload 1234243525522552522452355525 --output encodePNGfile
+Valid PNG so let us continue!
+Payload Original: 31 32 33 34 32 34 33 35 32 35 35 32 32 35 35 32 35 32 32 34 35 32 33 35 35 35 32 35
+Payload Encode: 56 5D 43 5C 57 46 40 52 5D 45 5D 57 40 46 52 5D 45 5A 57 46 46 55 5C 45 5D 50 40 46
+Success: encodePNGfile created
+```
+清单 13-19：运行`imgInject`程序对数据块进行XOR编码
+
+`payload` 被写入到字节表示并作为`Payload Original`显示到标准输出。 然后用值为`gophers`的key对 `payload` 进行 XOR，  并作为 `Payload Encode` 显示。
+
+要解密负载字节，使用解码函数，如清单13-20。
+
+```go
+//Decode Block
+if (c.Offset != "") && c.Decode {
+	var m MetaChunk
+	offset, _ := strconv.ParseInt(c.Offset, 10, 64)
+	b.Seek(offset, 0)
+	m.readChunk(b)
+	origData := m.Chk.Data
+	m.Chk.Data = utils.XorDecode(m.Chk.Data, c.Key)
+	m.Chk.CRC = m.createChunkCRC()
+	bm := m.marshalData()
+	bmb := bm.Bytes()
+	fmt.Printf("Payload Original: % X\n", origData)
+	fmt.Printf("Payload Decode: % X\n", m.Chk.Data)
+	utils.WriteData(b, c, bmb)
+}
+```
+清单 13-20：解码图片文件和负载 (/ch-13/imgInject/pnglib/commands.go)
+
+代码块需要包含有效负载的块段的偏移位置。 使用该偏移来 `Seek()` 文件位置，以及后续调用`readChunk()`来获取 `SIZE、TYPE、DATA 和 CRC` 值所必需的。 使用 `chk.Data` 负载值和相同的秘钥调用 `XorDecode()` 编码数据，然后将解码的值再赋值给 `chk.Data` 。（记住，这是对称加密，因此您使用相同的密钥来加密和解密数据。）继续调用 `marshalData()`，将 `Chunk` 结构体转换为字节切片。 最后，使用 `WriteData()` 函数将包含已解码有效负载的新块段写入文件。 
+
+程序这次带有解码参数的命令行运行，应该生成如清单13-21所示的结果。
+
+```sh
+$ go run main.go -i encodePNGfile -o decodePNGfile --offset 0x85258 –decode \
+--key gophersValid PNG so let us continue!
+Payload Original: 56 5D 43 5C 57 46 40 52 5D 45 5D 57 40 46 52 5D 45 5A 57 46 46 55 5C 45 5D 50 40 46
+Payload Decode: 31 32 33 34 32 34 33 35 32 35 35 32 32 35 35 32 35 32 32 34 35 32 33 35 35 35 32 35
+Success: decodePNGfile created
+```
+清单 13-21：运行`imgInject`程序对数据 XOR 解码
+
+从原始PNG文件中读取的 `Payload Original` 被编码成负载数据，而 `Payload Decode` 被解密成负载。 如果比较前面例子运行的命令行和这里的输出，会注意到解码后的负载与最初提供的原始明文值匹配。 
+
+不过，代码有个问题。 记得程序代码将在规范的偏移位置注入新的已解码块。 如果已经包含编码的块段的文件，然后尝试用一个解码的块段编写一个新文件，那么将在新的输出文件中得到两个块。可以在图13-5中看到这一点。
+
+![](https://github.com/YYRise/black-hat-go/raw/master/ch-13/images/13-5.png)
+图13-5 含有解码和编码块段文件的输出
+
+要理解为什么会发生这种情况，请回想一下已编码的PNG文件在偏移量为0x85258处有已编码的块段，如图13-6所示。
+
+![](https://github.com/YYRise/black-hat-go/raw/master/ch-13/images/13-6.png)
+图13-6 含有编码块段文件的输出
+
+当解码数据被写入偏移量0x85258时，问题就出现了。解码数据被写入与编码数据相同的位置时，我们不会删除编码数据;它只是将文件字节的其余部分向右移动，包括编码的块段，如前面图13-5所示。这可能会使负载提取复杂化或产生意想不到的后果，例如将明文负载透露给网络设备或安全软件。
+
+幸运的是，这个问题很容易解决。看一下之前的 `WriteData()` 函数。这一次可以修改该函数来解决问题(清单13-22)。
+
+```go
+//WriteData writes new data to offset
+func WriteData(r *bytes.Reader, c *models.CmdLineOpts, b []byte) {
+	offset, err := strconv.ParseInt(c.Offset, 10, 64)
+	if err != nil {
+		log.Fatal(err)
+	}
+	w, err := os.OpenFile(c.Output, os.O_RDWR|os.O_CREATE, 0777)
+	if err != nil {
+		log.Fatal("Fatal: Problem writing to the output file!")
+	}
+	r.Seek(0, 0)
+	var buff = make([]byte, offset)
+	r.Read(buff)
+	w.Write(buff)
+	w.Write(b)
+	if c.Decode {
+	r.Seek(int64(len(b)), 1)
+	}
+	_, err = io.Copy(w, r)
+	if err == nil {
+		fmt.Printf("Success: %s created\n", c.Output)
+	}
+}
+```
+清单 13-22：更新 `WriteData()` 以防止重复辅助块类型 (/ch-13/imgInject/utils/writer.go)
+
+使用 `c.Decode` 条件逻辑引入修复。 XOR 操作产生一个字节对字节的事务。 因此，编码和解码的块段长度相同。 此外，`bytes. reader` 将在写入已解码的块段时要包含原始编码图像文件的其余部分。 因此，可以在 `bytes.Reader` 上执行包含解码块段长度的右字节移位，将 `bytes.Reader` 推进经过编码的块段并将剩余字节写入新的图像文件。
+
+瞧！如图 13-7 所示，十六进制编辑器确认问题已解决。
+不再有重复的辅助块类型。
+
+![](https://github.com/YYRise/black-hat-go/raw/master/ch-13/images/13-7.png)
+图13-7 无重复的辅助块段文件的输出
+
+编码数据不在了。此外，对文件运行 `ls -la`应该会产生相同的文件长度，即使文件字节已经改变。
