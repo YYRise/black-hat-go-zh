@@ -2,7 +2,7 @@
 
 ## 开始
 
-首先，让我们回顾一下将要做的事情：创建一个服务器，它以操作系统命令的形式从管理组件接收工作(也将创建管理组件)。 创建一个植入，定期轮询服务器获取新命令，然后将命令输出发布回服务器。 然后服务器将该结果返回给管理客户机，以便操作员(您)可以看到输出。 
+首先，让我们回顾一下将要做的事情：创建一个服务器，它以操作系统命令的形式从管理组件接收工作(也将创建管理组件)。 创建一个植入，定期轮询服务器获取新命令，然后将命令输出发布回服务器。 然后服务器将该结果返回给管理客户机，以便操作者(您)可以看到输出。 
 
 首先安装工具，用于帮助我们处理这些网络交互，并检查这个项目的目录结构。
 
@@ -37,3 +37,55 @@ $ tree
 
 创建了结构之后，我们就可以开始构建我们的实现了。在接下来的几个小节中，将带您浏览每个文件的内容。
 
+
+## 定义并构建 gRPC API
+
+下一个任务是定义gRPC API将使用的功能和数据。 与构建和使用 REST 端点不同，后者具有相当明确的一组期望（例如，它们使用 HTTP 动词和 URL 路径来定义对哪些数据采取哪些操作），gRPC 更随意。 可以有效地定义一个API服务，并将该服务的函数原型和数据类型与之绑定。 使用 Protobufs 定义API。 用Google搜索可以很快地找到Protobufs语法的完整说明，但是这里我们做个简短介绍。
+
+至少，我们需要定义一个管理服务，操作者使用它向服务器发送操作系统命令(工作)。 同时也需要一个植入服务，用于从服务器获取工作，并将命令输出发送回服务器。 清单 14-1 是 `implant.proto` 文件的内容。 （所有的代码清单都在 github 仓库 https://github.com/blackhat-go/bhg/ 跟目录下。）
+
+```proto
+//implant.proto
+syntax = "proto3";
+package grpcapi;
+
+// Implant defines our C2 API functions
+service Implant {
+	rpc FetchCommand (Empty) returns (Command);
+	rpc SendOutput (Command) returns (Empty);
+}
+
+// Admin defines our Admin API functions
+service Admin {
+	rpc RunCommand (Command) returns (Command);
+}
+
+// Command defines a with both input and output fields
+message Command {
+	string In = 1;
+	string Out = 2;
+}
+
+// Empty defines an empty message used in place of null
+message Empty {
+}
+```
+清单 14-1：用 Protobuf 定义 gRPC API (/ch-14/grpcapi/implant.proto)
+
+还记得如何将这个定义的文件编译为Go特定的工件？ 好吧，明确地包含`package grpcapi` 来告诉编译器，我们希望在 `grpcapi` 包下创建这些工作。 包的名字是随意的。 这里使用是为了确保API代码与其他组件保持分离。
+
+然后定义了一个名为 `Implant` 的服务和一个名为 `Admin` 的服务。 将其分开是因为 `Implant` 组件以不同于 `Admin` 客户端的方式与API交互。 举例来说，我们不希望 `Implant` 向我们的服务发送操作系统命令，就像我们不希望我们的 `Admin` 组件将命令输出发送到服务器一样。 
+
+在 `Implant` 服务中定义了两个方法：`FetchCommand 和 Send Output`。 定义这些方法就像在Go中定义 `interface` 一样。 也可以说任何 `Implant` 服务的实现都需要实现这两个方法。 `FetchCommand` 使用 `Empty` 消息作为参数，且返回 `Command` 消息，将从服务器检索任何未完成的操作系统命令。 `SendOutput` 将 `Command` 消息（包含命令输出）发送回服务器。 刚刚提到的这些消息是任意的、复杂的数据结构，其中包含我们在端点之间来回传递数据所必需的字段。
+
+`Admin` 服务定义了一个方法：`RunCommand` ，使用 `Command` 消息作为参数，并期望读回一个`Command` 消息。 其目的是让您，即 RAT 操作者，可以在具有运行植入程序的远程系统上运行操作系统命令。 
+
+最后，定义了要传递的两个消息：`Command` 和 `Empty`。 `Command`有两个字段， 一个用于保存操作系统命令本身（名为 `In` 的字符串），另一用于保存命令输出（名为 `Out` 的字符串）。 注意，消息和字段的名字都是随意的，但是给每个字段都赋值了一个数字值。 您可能想知道，如果我们将`In` 和 `Out` 们定义为字符串，为何他们赋值数值。 答案是这只是模式定义，并非是实现。 这些数字表示消息中的字段在消息中的偏移。 也就是， `In` 先出现，`Out` 后出现。 `Empty` 中没有字段。 这是为了解决 Protobuf 不明确允许将空值传递到 RPC 方法或从 RPC 方法返回这一事实的技巧。 
+
+现在有了模式。 需要编译该模式才算完成 gRPC的定义。 在 `grpcapi` 目录下执行下面的命令：
+
+```sh
+> protoc -I . implant.proto --go_out=plugins=grpc:./
+```
+
+在前面提到的初始化安装完成后这个命令才能用，该命令的作用是在当前目录下搜索名问 `implant.proto` 的 Protobuf 文件， 并在当前目录下生成特定于Go的输出。 一旦成功执行，在 `grpcapi` 目录下应该会生成名为 `implant.pb.go` 的新文件。 这个新文件包含了在Protobuf模式中创建的服务和消息的 `interface` 和 `struct` 定义。 我们将使用这些来构建我们的服务，植入和管理组件。 让我们一个一个来构建。
