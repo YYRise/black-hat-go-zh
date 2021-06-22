@@ -279,5 +279,41 @@ func main() {
 
 代码继续使用无限 `for loop` 轮询植入服务器，重复地查看是否有任务需要执行。 通过调用 `client.FetchCommand(ctx, req)` 来实现，将请求的上下文和 `Empt` 传递给该函数。 幕后是，该函数连接API服务。 如果收到的响应的 `cmd.In` 字段中没有任何东西，就暂停3秒后再重试。 当收到一个工作单元时，植入服务调用 `strings.Split(cmd.In, " ")` 命令分割为单个单词和参数。 这是必要的，因为Go执行操作系统命令的的语法是 `exec.Command(name, args...)`，`name` 是指要运行的命令，`args...` 是操作系统命令用到的子命令、标记和参数的列表。 Go这样做是为了防止操作系统命令注入，但是使执行变得复杂了，因为在执行前必须将命令分割成相关的部分。 通过运行`c.CombinedOutput()` 执行命令，并收集输出。 最后，我们获取该输出并向 `client.SendOutput(ctx, cmd)` 发起 gRPC 调用，将命令及其输出发送回服务器。 
 
-植入程序完成了，可以通过 `go run implant/implant.go` 运行。 应该会链接到服务器。 同样，这也是虎头蛇尾，因为还没有任务要做。 只是几个正在运行的进程，建立连接但没有做任何有意义的事情。
-让我们解决这个问题。
+植入程序完成了，可以通过 `go run implant/implant.go` 运行。 应该会链接到服务器。 同样，这也是虎头蛇尾，因为还没有任务要做。 只是几个正在运行的进程，建立连接但没有做任何有意义的事情。 让我们解决这个问题。
+
+
+## 构建管理组件
+
+管理组件是RAT最后的部分。 这是实际生成工作的地方。 工作将通过我们的管理 gRPC API 发送到服务端，然后服务端将其转发给植入程序。 服务端获取植入端的输出，并将其发送会管理客户端。 清单14-5是 `client/client.go` 的代码。
+
+```go
+func main() {
+	var
+	(
+		opts []grpc.DialOption
+		conn *grpc.ClientConn
+		err error
+		client grpcapi.AdminClient 
+	)
+
+	opts = append(opts, grpc.WithInsecure())
+	if conn, err = grpc.Dial(fmt.Sprintf("localhost:%d", 9090), opts...); err != nil { 
+		log.Fatal(err)
+	}
+	defer conn.Close()
+	client = grpcapi.NewAdminClient(conn) 
+	var cmd = new(grpcapi.Command)
+	cmd.In = os.Args[1] 
+	ctx := context.Background()
+	cmd, err = client.RunCommand(ctx, cmd) 
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(cmd.Out) 
+}
+```
+清单 14-5：创建管理客户端 (/ch-14/client/client.go)
+
+通过定义 `grpcapi.AdminClient` 变量开始，和管理服务在9090端口建立连接，并在调用 `grpcapi.NewAdminClient(conn)` 时使用该连接创建管理gRPC客户端的实例。（记住 `grpcapi.AdminClient`类型和 `grpcapi .NewAdminClient()` 函数是由 `protoc` 创建的。）在继续之前，将这个客户端创建过程与植入代码进行比较。 注意相似之处，但也要注意类型、函数调用和端口的细微差别。
+
+假设有一个命令行参数，我们从中读取操作系统命令。 当然，如果检查是否有参数被传入话，代码会更健壮些，但对于这个例子我们并不需要担心。 将命令赋值给 `cmd.In` 。 将 `*grpcapi.Command` 的实例 `cmd` 传送给 gRPC客户端的 `RunCommand(ctx context .Context, cmd *grpcapi.Command)` 方法。 幕后是，这个命令序列化并发送到之前创建的管理服务。 收到响应后，我们期望的输出填充操作系统命令结果。 将该输出写入控制台。
