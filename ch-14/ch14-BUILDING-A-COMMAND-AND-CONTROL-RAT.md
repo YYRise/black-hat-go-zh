@@ -173,3 +173,47 @@ func (s *adminServer) RunCommand(ctx context.Context, cmd *grpcapi.Command) (*gr
 
 最后一个是 `implantServer` 中的 `RunCommand(ctx context.Context, cmd *grpcapi .Command)`方法，被定义为 `adminServer` 类型。 接收还未发送到植入端的 `Command`。 表示管理组件想要值入端执行的一个任务单元。 使用一个 goroutine 将任务放置到 `work` 管道中。 因为这里使用的是一个没有缓存的管道，会阻塞执行。 不过我们需要能够从输出管道读取到数据，因此，使用 goroutine 将任务放到管道中并继续执行。 阻塞执行，等待 `output` 管道响应。 本质上让流程同步执行：发送一个命令到植入端，然后等待响应。 当收到响应后，返回结果。 同样，希望 `Command` 的结果，输出字段由植入端执行操作系统命令的结果填充。 
 
+### `main()` 函数
+
+清单14-3是`server/server.go` 文件中的`main()` 函数，运行两个独立的服务——一个从管理端接收命令，另一个从值入端接收轮询。 使用两个监听者，以便能限制访问管理API——我们不希望任何人都与之交互——我们希望植入端监听一个可以从限制性网络访问的端口。 
+
+```go
+func main() {
+	var (
+		implantListener, adminListener net.Listener
+		err error
+		opts []grpc.ServerOption
+		work, output chan *grpcapi.Command
+	)
+	work, output = make(chan *grpcapi.Command), make(chan *grpcapi.Command)
+	implant := NewImplantServer(work, output)
+	admin := NewAdminServer(work, output)
+	if implantListener, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", 4444)); err != nil {
+		log.Fatal(err)
+	}
+	if adminListener, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", 9090)); err != nil {
+		log.Fatal(err)
+	}
+	grpcAdminServer, grpcImplantServer := grpc.NewServer(opts...), grpc.NewServer(opts...)
+	grpcapi.RegisterImplantServer(grpcImplantServer, implant)
+	grpcapi.RegisterAdminServer(grpcAdminServer, admin)
+	go func() {
+		grpcImplantServer.Serve(implantListener)
+	}()
+	grpcAdminServer.Serve(adminListener)
+}
+```
+清单 14-3：运行管理和植入服务 (/ch-14/server/server.go)
+
+首先声明变量。 使用两个监听者：一个用于植入服务，另一个用于管理服务。 这样做是为了可以在与植入API分开的端口上提供管理API。
+
+创建用于在植入和管理服务间传递数据的管道。 需要注意的是，通过调用 `NewImplantServer (work, output) 和 NewAdminServer(work, output)` 使用相同的管道来初始化植入和管理服务。 通过使用一样的管道实例，可以让管理和植入服务再共享管道上回话。 
+
+接下来，为每个服务初始化网络监听者，`implantListener` 绑定4444端口，`adminListener` 绑定9090端口。 一般使用80或443端口，这通常是HTTP/s 的网络出口，但在本例中，我们选择任意的端口仅用于测试，以及干扰开发机上运行的其他服务。 
+
+我们已经定义了网络级监听器。 现在就设置gRPC服务和API。 通过调用 `grpc.NewServer()` 创建两个gRPC服务实例（一个用于管理API，一个用于植入API）。 这初始化核心gRPC服务器，它将为我们处理所有的网络通信等。 我们只需要告诉它使用我们的 API。 通过调用 `grpcapi.RegisterImplantServer(grpcImplantServer,implant)` 和 `grpcapi.RegisterAdminServer(grpcAdminServer, admin)` 来注册 API 实现的实例（在示例中名为 `implant` 和 `admin`）。 注意，尽管我们创建了名为 `grpcapi` 的包，但从未定义这两个函数；是 `protoc` 命令定义的。 这些函数在 `implant.pb.go` 中创建的，作为创建我们的植入和管理gRPC API 服务的新实例的一种手段。
+很狡猾！
+
+至此，我们已经定义了 API 的实现并将它们注册为 gRPC 服务。 要做的最后一件事是，调用 `grpcImplantServer.Serve(implantListener)` 来启动植入服务。 在 goroutine 中执行此操作以防止代码阻塞。 毕竟，我们也要通过调用 `grpcAdminServer.Serve (adminListener)` 启动管理服务。
+
+现在服务端完成了，可以通过运行 `go run server/server.go` 来启动。 当然，还有东西和服务交互，因此也不会有任何响应。 让我们进入下一部分——植入端。
