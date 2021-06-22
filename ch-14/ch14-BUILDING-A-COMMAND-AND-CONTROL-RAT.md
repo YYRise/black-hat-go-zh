@@ -270,7 +270,7 @@ func main() {
 		client.SendOutput(ctx, cmd) 
 	}
 }
-``` 
+```
 清单 14-4：创建植入端 (/ch-14/implant/implant.go)
 
 植入端代码只有一个 `main()` 函数。 从定义变量开始，包含一个 `grpcapi.ImplantClient` 类型。 `protoc` 命令自动地为我们创建这个类型。 该类型具有便利远程通信所需的所有RPC函数存根。 
@@ -312,3 +312,21 @@ func main() {
 	fmt.Println(cmd.Out) 
 }
 ```
+
+
+
+
+
+## 运行RAT
+
+现在，假设服务端和植入端在运行中，可以通过 `go run client/client.go command` 来执行管理客户端。应该会在管理客户端的终端收到输出，并显示在屏幕上，如下所示：
+
+```sh
+$ go run client/client.go 'cat /etc/resolv.conf' 
+domain Home
+nameserver 192.168.0.1
+nameserver 205.171.3.25
+```
+
+就是这样——工作中的 RAT。输出展示的是远程文件的内容。运行一些其他命令以查看植入端的运行情况。
+
