@@ -1,4 +1,4 @@
-# 第2章：TCP和GO
+# 第2章：TCP、扫描仪和代理
 
 * [摘要](ch2-tcp-scanners-and-proxies.md#摘要)
 * [理解TCP握手](ch2-tcp-scanners-and-proxies.md#理解TCP握手)
