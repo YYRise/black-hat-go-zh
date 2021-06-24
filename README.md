@@ -3,7 +3,7 @@
 ## 目录
 - 第1章：Go基础和概念（未译）
 - [第2章：TCP、扫描仪和代理](ch-2/ch2-tcp-scanners-and-proxies.md )
-- [第3章：HTTP客户端和使用工具远程交互.md](ch-3/ch3-http-clients-and-remote-interaction-with-tools.md)
+- [第3章：HTTP客户端和使用工具远程交互](ch-3/ch3-http-clients-and-remote-interaction-with-tools.md)
 - [第4章：HTTP服务器、路由和中间件](ch-4/ch4-http-servers-routing-and-middleware.md)
 - [第5章：开发DNS](ch-5/ch5-exploiting-dns.md)
 - [第6章：与SMB和NTLM交互](ch-6/ch6-interacting-with-smb-and-ntlm.md)

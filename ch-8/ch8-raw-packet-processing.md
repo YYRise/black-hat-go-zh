@@ -10,13 +10,13 @@
 
 在完成本章的代码之前，需要设置开发环境。首先，输入以下命令安装gopacket：
 
-```text
+```sh
 $ go get github.com/google/gopacket
 ```
 
 现在，gopacket 依赖外部库和驱动程序绕过操作系统的协议栈。如果打算在 Linux 或 macOS 编译本章中的例子的话，需要安装 _libpcap-dev_ 。使用大多数的包管理工具（如apt，yum，或 brew）来安装。下面使用 _apt_ 来安装（其余两个安装过程类型）：
 
-```text
+```sh
 $ sudo apt-get install libpcap-dev
 ```
 
@@ -58,7 +58,7 @@ func main() {
 
 执行程序将产生类似于清单8-2的输出。
 
-```text
+```sh
 $ go run main.go 
 enp0s5
     IP: 10.0.1.20
@@ -149,7 +149,7 @@ func main() {
 
 输出的内容类似于清单 8-4。请注意，该程序需要权限，因为是从网络读取原始内容。
 
-```text
+```sh
 $ go build -o filter && sudo ./filter
 PACKET: 74 bytes, wire length 74 cap length 74 @ 2020-04-26 08:44:43.074187 -0500 CDT 
 - Layer 1 (14 bytes) = Ethernet {Contents=[..14..] Payload=[..60..] SrcMAC=00:1c:42:cf:57:11 DstMAC=90:72:40:04:33:c1 EthernetType=IPv4 Length=0}
@@ -243,7 +243,7 @@ func main() {
 
 下面是抓取一个FTP登录的示例：
 
-```text
+```sh
 $ go build -o ftp && sudo ./ftp 
 USER someuser
 PASS passw0rd
@@ -433,7 +433,7 @@ Listing 8-6: Scanning and processing packets with SYN-flood protections \([https
 
 让我们看一下程序的示例运行，如清单8-7所示。
 
-```text
+```sh
 $ go build -o syn-flood && sudo ./syn-flood enp0s5 10.1.100.100 80,443,8123,65530
 Capturing packets
 Trying 10.1.100.100:80

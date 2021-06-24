@@ -24,7 +24,7 @@ _MongoDB_是在本章中唯一用到NoSQL数据库。不像传统的关系数据
 
 和传统的SQL数据库不一样，MongoDB是_schema-less_，也就是它不用遵循用于组织表格数据的预定义的严格规则系统。这也就是为什么在清单7-1中只有 insert 命令而没有定义模式。首先，使用下面的命令安装MongoDB的Docker镜像：
 
-```text
+```sh
 $ docker run --name some-mongo -p 27017:27017 mongo
 ```
 
@@ -32,13 +32,13 @@ $ docker run --name some-mongo -p 27017:27017 mongo
 
 通过列出所有运行中的容器来检查容器是否自动启动：
 
-```text
+```sh
 $ docker ps
 ```
 
 万一容器没有自动启动，执行下面的命令：
 
-```text
+```sh
 $ docker start some-mongo
 ```
 
@@ -46,7 +46,7 @@ start 命令应该能让容器运行。
 
 容器运行后使用 `run` 命令传递MongoDB客户端连接到 MongoDB 实例，用这种方式就可以和数据库交互来插入数据：
 
-```text
+```sh
 $ docker run -it --link some-mongo:mongo --rm mongo sh \ 
 -c 'exec mongo "$MONGO_PORT_27017_TCP_ADDR:$MONGO_PORT_27017_TCP_PORT/store"'
 >
@@ -92,7 +92,7 @@ _PostgreSQL_ （也叫 _Postgres_） 和 _MySQL_  是两个最常见的、最知
 
 与上一节中的MongoDB示例大致相同，首先下载并允许合适的Docker镜像：
 
-```text
+```sh
 $ docker run --name some-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=password \ -d mysql
 $ docker run --name some-postgres -p 5432:5432 -e POSTGRES_PASSWORD=password \ -d postgres
 ```
@@ -101,7 +101,7 @@ $ docker run --name some-postgres -p 5432:5432 -e POSTGRES_PASSWORD=password \ -
 
 接下来，使用相应的客户端连接到容器中——同样，使用Docker镜像来避免在主机上安装任何额外的文件——然后继续创建数据库并写入数据。清单7-2中是MySQL相关的逻辑。
 
-```text
+```sh
 $ docker run -it --link some-mysql:mysql --rm mysql sh -c \
 'exec mysql -h "$MYSQL_PORT_3306_TCP_ADDR" -P"$MYSQL_PORT_3306_TCP_PORT" \
 -uroot -p"$MYSQL_ENV_MYSQL_ROOT_PASSWORD"'
@@ -117,7 +117,7 @@ mysql> create table transactions(ccnum varchar(32), date date, amount float(7,2)
 
 清单7-3是Postgres的逻辑，和MySQL 的语法稍微不同。
 
-```text
+```sh
 $ docker run -it --rm --link some-postgres:postgres postgres psql \ 
 -h postgres -U postgres
 postgres=# create database store;
@@ -152,7 +152,7 @@ mysql> insert into transactions(ccnum, date, amount, cvv, exp) values
 
 使用下面的命令安装 _mgo_ 驱动：
 
-```text
+```sh
 $ go get gopkg.in/mgo.v2
 ```
 
@@ -199,7 +199,7 @@ func main() {
 
 在 `main()` 函数中，调用 `mgo.Dial()` 通过建立与数据库的连接来创建session，测试来确定没有发生错误，延迟调用来关闭session。然后使用 `session` 变量来查询 `store` 数据库，从 `transactions` 集合中检索所有记录。将结果保存在名为 `results`的 `Transaction` 类型的切片中。其背后原理是结构体的标记用于将二进制JSON解析到定义的类型中。最后，循环遍历结果集并打印。这个例子和下节的SQL示例都输出类似下面的内容：
 
-```text
+```sh
 $ go run main.go
 4444333322221111 2019-01-05 100.12 1234 09/2020 
 4444123456789012 2019-01-07 2400.18 5544 02/2021 
@@ -212,7 +212,7 @@ Go中有一个 `database/sql` 的标准包，该包定义了用于与SQL和类�
 
 基于此，只展示连接到一个SQL数据库——MYSQL——而将其他SQL数据库留给读者作为练习。首先使用下面的命令安装驱动：
 
-```text
+```sh
 $ go get github.com/go-sql-driver/mysql
 ```
 
@@ -478,7 +478,7 @@ func main() {
 
 当运行程序时，将得到以下输出:
 
-```text
+```sh
 $ go run main.go 127.0.0.1 
 [DB] = store
     [TABLE] = transactions 
@@ -634,7 +634,7 @@ func main() {
 
 现在，针对 Docker MySQL 实例运行程序，确认是否工作正常，如下所示：
 
-```text
+```sh
 $ go run main.go 127.0.0.1 
 [DB] = store
     [TABLE] = transactions 
@@ -696,7 +696,7 @@ func main() {
 
 工具完成后，回到桌面并创建以下目录结构：
 
-```text
+```sh
 $ tree targetpath/ 
 targetpath/
 --- anotherpath
@@ -711,7 +711,7 @@ targetpath/
 
 在同一个 `targetpath` 目录下运行你的工具会产生以下输出，确认了代码可以出色地执行：
 
-```text
+```sh
 $ go run main.go ./somepath
 [+] HIT: somepath/anotherpath/users.csv
 [+] HIT: somepath/yetanotherpath/passwords.xlsx

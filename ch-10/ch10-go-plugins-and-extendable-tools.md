@@ -19,13 +19,13 @@ Class clazz = cl.loadClass("com.example.MyClass"); clazz.getConstructor().newIns
 
 幸运的是，Go的新版本能够模拟这一功能，允许开发人员显式地编译代码以作为插件使用。具体来说，在版本1.10之前，插件系统只能在Linux上工作，因此必须在Linux上部署可扩展框架。Go的插件是在构建过程中作为共享对象创建的。要生成共享对象，输入以下构建命令，该命令将 `plugin` 提供给 `buildmode` 选项：
 
-```text
+```sh
 $ go build -buildmode=plugin
 ```
 
 或者，要构建Windows DLL，使用 `c-shared` 作为 `buildmode` 选项:
 
-```text
+```sh
 $ go build -buildmode=c-shared
 ```
 
@@ -48,7 +48,7 @@ $ go build -buildmode=c-shared
 
 从主程序开始，在其上添加插件。这有助于理解创建插件过程。设置存储库的目录结构，如下显示：
 
-```text
+```sh
 $ tree 
 .
 --- cmd
@@ -218,13 +218,13 @@ func New() scanner.Checker {
 
 既然已经创建了插件和使用它的主程序，那就编译插件，使用-o选项将编译后的共享对象定向到扫描程序的插件目录：
 
-```text
+```sh
 $ go build -buildmode=plugin -o /path/to/plugins/tomcat.so
 ```
 
 然后运行扫描器 （cmd/scanner/main.go）来确认它能识别出插件，加载插件，并且执行插件的 `Check()` 方法：
 
-```text
+```sh
 $ go run main.go
 Found plugin: tomcat.so
 2020/01/15 15:45:18 Checking for Tomcat Manager...
@@ -249,7 +249,7 @@ Found plugin: tomcat.so
 
 要在Go中使用Lua，须使用第三方包 `gopher-lua` ，该包能够用Go直接编译并执行Lua。输入以下内容，将其安装在系统上：
 
-```text
+```sh
 $ go get github.com/yuin/gopher-lua
 ```
 
@@ -459,7 +459,7 @@ end
 
 这个示例并不完美，可以从其他设计注意事项获得好处。但是，与大多数攻击工具一样，最重要的是它可以工作并解决问题。运行代码证明它确实可以按预期工作：
 
-```text
+```sh
 $ go run main.go
 Found plugin: tomcat.lua
 [+] Endpoint requires Basic Auth. Proceeding with password guessing 

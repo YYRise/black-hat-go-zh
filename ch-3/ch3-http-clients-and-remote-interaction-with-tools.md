@@ -43,8 +43,7 @@ r3, err = http.Post(
 // Read response body. Not shown. 
 defer r3.Body.Close()
 ```
-
- 代码 3-1: Get\(\), Head\(\), 和 Post\(\) 函数的示例 \(https://github.com/blackhat-go/bhg /ch-3/basic/main.go/\)
+代码 3-1: Get(), Head(), 和 Post() 函数的示例 \(https://github.com/blackhat-go/bhg/ch-3/basic/main.go/\)
 
 POST函数使用相当普通的调用模式，即URL编码表单数据时，设置Content-Type为application / x-www-form-urlencoded。
 
@@ -61,8 +60,7 @@ form := url.Values{}
 form.Add("foo", "bar")
 r3, err := http.PostForm("https://www.google.com/robots.txt", form) // Read response body and close.
 ```
-
-代码 3-2: 使用`PostForm()`函数替代`Post()` \([https://github.com/blackhat](https://github.com/blackhat) -go/bhg/ch-3/basic/main.go/\)
+代码 3-2: 使用`PostForm()`函数替代`Post()` (/ch-3/basic/main.go)
 
 不幸的是，没有其他的HTTP方法（例如PATCH，PUT或DELETE）没有这种简便函数。主要使用这些方法与RESTful API进行交互，RESTful API 提供了服务器使用这些方法的方式和原因的一般指导；但没有什么是一成不变的，而在方法方面，HTTP就像古老的西方。实际上，我们经常想到创建一个专门使用DELETE进行所有操作的新网络框架的想法。我们称它为`DELETE.js`，毫无疑问，这将是Hacker News的热门话题。读到这，即表示您同意不窃取这个想法！
 
@@ -83,8 +81,7 @@ req, err := http.NewRequest("DELETE", "https://www.google.com/robots.txt", nil) 
 resp, err := client.Do(req)
 // Read response body and close.
 ```
-
-代码 3-3: 发送 DELETE 请求 \([https://github.com/blackhat-go/bhg/ch-3/basic](https://github.com/blackhat-go/bhg/ch-3/basic) /main.go/\)
+代码 3-3: 发送 DELETE 请求 (/ch-3/basic/main.go)
 
 现在，代码3-4是使用 `io.Reader` 的 PUT请求（看起来像PATCH请求）。
 
@@ -98,7 +95,7 @@ resp, err := client.Do(req)
 // Read response body and close.
 ```
 
-代码 3-4: 发送 PUT 请求 \([https://github.com/blackhat-go/bhg/ch-3/basic](https://github.com/blackhat-go/bhg/ch-3/basic) /main.go/\)
+代码 3-4: 发送 PUT 请求 (/ch-3/basic/main.go)
 
 标准的Go `net/http` 库包含一些请求在发送到服务器之前对其进行操作的函数。通过阅读本章中的实战示例，您将学到一些更相关和实用的变体。但是，先来演示下如何有目的地处理服务器收到的HTTP请求。
 
@@ -124,7 +121,7 @@ fmt.Println(string(body))
 resp.Body.Close()
 ```
 
-代码 3-5: 处理 HTTP 响应体 \([https://github.com/blackhat-go/bhg/ch-3/basic/main.go/](https://github.com/blackhat-go/bhg/ch-3/basic/main.go/)\)
+代码 3-5: 处理 HTTP 响应体 (/ch-3/basic/main.go/)
 
 收到响应后，在上面代码命名为 `resp`，通过访问暴露出的 `Status` 参数就能获取到状态字符串（例如，200 ok）；有一个类似的 `StatusCode` 参数，该参数仅访问状态字符串的整数部分，未在示例中展示。
 
@@ -132,7 +129,7 @@ resp.Body.Close()
 
 现在回到终端查看错误状态和响应体内容：
 
-```text
+```sh
 $ go run main.go
 200 OK
 User-agent: * 
@@ -219,7 +216,7 @@ Shodan \([https://www.shodan.io/\)，自称为“世界上第一个互联网连�
 
 构建API客户端时，应对其进行结构设计，以使函数调用和逻辑独立。这可以在其他项目中作为单独的库来复用。这样就不会重复造轮子了。可复用性的架构会稍微改变项目的结构。以Shodan为例，项目的结构为：
 
-```text
+```sh
 $ tree github.com/blackhat-go/bhg/ch-3/shodan github.com/blackhat-go/bhg/ch-3/shodan |---cmd
 | |---shodan
 | |---main.go |---shodan
@@ -467,7 +464,7 @@ func main() {
 
 先从环境变量`SHODAN_API_KEY`中获得API 的key。然后用该值实例化 `Client` 结构体，命名为s，接下来调用 `APIInfo()`方法。调用 `HostSearch()`，使用命令行参数传递的搜索字符串。最后，遍历结果显示与查询字符串匹配的那些服务的IP和端口值。以下输出是搜索字符串tomcat的结果：
 
-```text
+```sh
 $ SHODAN_API_KEY=YOUR-KEY go run main.go tomcat 
 Query Credits:  100
 Scan Credits:   100
@@ -491,7 +488,7 @@ Metasploit是用于执行各种黑客技术的框架，包括侦察，开发，�
 
 本节开始之前，先下载和安装Metasploit编辑器。通过Metasploit中的`msgrpc`模块启动Metasploit控制台以及RPC侦听器。然后设置服务器地址——RPC服务监听的IP——和密码，如代码3-12：
 
-```text
+```sh
 $ msfconsole
 msf > load msgrpc Pass=s3cr3t ServerHost=10.0.1.6 [*] MSGRPC Service: 10.0.1.6:55552
 [*] MSGRPC Username: msf
@@ -503,7 +500,7 @@ msf > load msgrpc Pass=s3cr3t ServerHost=10.0.1.6 [*] MSGRPC Service: 10.0.1.6:5
 
 为RPC实例设置以下环境变量，使代码更具可移植性且避免硬编码。这与在第58页“创建客户端”中用于与Shodan进行交互的Shodan API密钥的操作类似。
 
-```text
+```sh
 $ export MSFHOST=10.0.1.6:55552 
 $ export MSFPASS=s3cr3t
 ```
@@ -516,7 +513,7 @@ $ export MSFPASS=s3cr3t
 
 首先，在Rapid7官方网站\([https://metasploit.help.rapid7.com/docs/rpc-api/\)上查看Metasploit的API的开发文档。公开的功能很多，通过本地交互远程执行任何操作。不像Shodan使用JSON，Metasploit使用压缩高效的二进制格式的MessagePack通信。因为Go中没有标准的MessagePack](https://metasploit.help.rapid7.com/docs/rpc-api/%29上查看Metasploit的API的开发文档。公开的功能很多，通过本地交互远程执行任何操作。不像Shodan使用JSON，Metasploit使用压缩高效的二进制格式的MessagePack通信。因为Go中没有标准的MessagePack) 包，因此使用功能齐全的公开版本。通过执行下面的命令安装：
 
-```text
+```sh
 $ go get gopkg.in/vmihailenco/msgpack.v2
 ```
 
@@ -524,7 +521,7 @@ $ go get gopkg.in/vmihailenco/msgpack.v2
 
 接下来，创建目录结构。本例只有两个Go文件：
 
-```text
+```sh
 $ tree github.com/blackhat-go/bhg/ch-3/metasploit-minimal 
 github.com/blackhat-go/bhg/ch-3/metasploit-minimal 
 |---client
@@ -544,7 +541,7 @@ github.com/blackhat-go/bhg/ch-3/metasploit-minimal
 
 最少的内容；期望接收要实现的方法的名称和`token`。`token`在这里占位用。如果通读过文档的话，这是成功登录到 RPC 服务器后生成的认证token。Metasploit 返回的`session.list`格式如下：
 
-```text
+```sh
 {
 "1" => {
     'type' => "shell",
@@ -599,19 +596,19 @@ type SessionListRes struct {
 
 现在还有一件事情未解决。那就是获取发送请求需要的`token`。为此，需要发送登录请求到`auth.login()`这个API，如下所示：
 
-```text
+```sh
 ["auth.login", "username", "password"]
 ```
 
 使用初始化时在Metasploit加载`msfrpc`模块时的用户名和密码替换`username`和`password`（也就是将其加入到环境变量中了）。假如认证成功的话，服务器响应如下，其含有为接下来请求所用的认证token。
 
-```text
+```sh
 { "result" => "success", "token" => "a1a1a1a1a1a1a1a1" }
 ```
 
 认证失败的响应如下：
 
-```text
+```sh
 {
     "error" => true,
     "error_class" => "Msf::RPC::Exception",
@@ -621,13 +618,13 @@ type SessionListRes struct {
 
 另外，我们还创建通过注销来使token过期的功能。该请求需要方法名，认证的token，第三个为可选参数，因为此处第三个参数不是必需的，就先忽略了：
 
-```text
+```sh
 [ "auth.logout", "token", "logoutToken"]
 ```
 
 成功的响应像下面这样：
 
-```text
+```sh
 { "result" => "success" }
 ```
 
@@ -695,7 +692,7 @@ func New(host, user, pass string) (*Metasploit, error) {
 
 代码 3-15: 定义Metasploit 客户端 \([https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/](https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)\)
 
-现在有了结构体，为了方便起见，还有一个初始化并返回新实例的New\(\)的函数。
+现在有了结构体，为了方便起见，还有一个初始化并返回新实例的New()的函数。
 
 ### 执行远程调用
 
@@ -774,7 +771,7 @@ func (msf *Metasploit) SessionList() (map[uint32]SessionListRes, error) {
 
 代码 3-17: Metasploit API 调用实现 \([https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/](https://github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc/msf.go/)\)
 
-定义了三个方法`Login()` , `Logout()`, 和 `SessionList()`。 每个方法使用相同的通用流程：创建并初始化请求结构体，创建响应结构体，调用辅助函数发送请求并接收解码后的响应体。`Login()`和`Logout()`方法操作`token`属性。方法中逻辑上唯一显著的差异在SessionList\(\)方法中，该方法中定义了`map[uint32]SessionListRes`类型的响应`res`，然后再遍历`res`，赋值结构体的`ID`属性，而后保存在map中。
+定义了三个方法`Login()` , `Logout()`, 和 `SessionList()`。 每个方法使用相同的通用流程：创建并初始化请求结构体，创建响应结构体，调用辅助函数发送请求并接收解码后的响应体。`Login()`和`Logout()`方法操作`token`属性。方法中逻辑上唯一显著的差异在SessionList()方法中，该方法中定义了`map[uint32]SessionListRes`类型的响应`res`，然后再遍历`res`，赋值结构体的`ID`属性，而后保存在map中。
 
 `session.list()`这个RPC函数需要有效的认证token，也就是在调用`SessionList()`前就要登录成功。代码 3-18使用`Metasploit`类型的的`msf`来访问token，此时还是无效的值——是个空字符串。由于这不是功能齐全的代码，只能在`SessionList`方法中显示调用`Login()`方法，但是对于实现另外的认证方法，必须检查存在有效的认证token，且显示调用`Login()`。这不是好的编码，因为花费大量的时间写重复的代码，这里只是作为引导。
 
@@ -847,7 +844,7 @@ Listing 3-19: 使用 msfrpc 包 \([https://github.com/blackhat-go/bhg/ch-3/metas
 
 通常调用其他API需要很多代码，但幸运的是，现在工作量应该会大大减少，因为只需定义请求和响应类型并构建库方法来发出远程调用。下面是直接从我们的客户端工具生成的输出示例，显示了一个已建立的Meterpreter session:
 
-```text
+```sh
 $ go run main.go 
 Sessions:
   1 WIN-HOME\jsmith @ WIN-HOME
@@ -867,13 +864,13 @@ Sessions:
 
 为什么只使用Bing搜索API来构建，而不是抓取HTML？因为已经学会了如何构建客户端来和结构化的API交互。有一些用于抓取HTML页面的用例，特别是在不存在API的情况下。顺便利用这个机会介绍一种提取数据的新方法，而不是重复已经学会的内容。将使用优秀的包，`goquery`，模仿`jQuery`的功能，jQuery是一个JavaScript库，直观的语法来遍历HTML文档并在其中选择数据。从安装`goquery`开始：
 
-```text
+```sh
 $ go get github.com/PuerkitoBio/goquery
 ```
 
 幸运的是，这是完成开发所需的惟一需要的软件。使用标准的Go包就能和Open XML 文件交互。这些文件尽管后缀都属于ZIP归档文件，提取后都含有XML文件。元数据存储在归档文件`docProps`目录中的两个文件中:
 
-```text
+```sh
 $ unzip test.xlsx $ tree
 --snip-- 
 |---docProps
@@ -1105,7 +1102,7 @@ func main() {
 
 运行代码产生的输出示例类似如下：
 
-```text
+```sh
 $ go run main.go nytimes.com docx
 0: http://graphics8.nytimes.com/packages/pdf/2012NAIHSAnnualHIVReport041713.docx 2020/12/21 11:53:50 Jonathan V. Iralu Dan Frosch - Microsoft Macintosh Word 2010 
 1: http://www.nytimes.com/packages/pdf/business/Announcement.docx
