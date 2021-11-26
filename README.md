@@ -1,4 +1,5 @@
 ## [在线阅读](https://yyrise.gitbook.io/black-hat-go/)
+## [语雀在线阅读](https://www.yuque.com/yyrise/black-hat-go/)
 
 ## 目录
 - 第1章：Go基础和概念（未译）
