@@ -16,3 +16,7 @@
 - [第12章：WINDOWS系统交互与分析](ch-12/ch12-Window-System-Interaction-and-Analysis.md)
 - [第13章：用隐写术隐藏数据](ch-13/ch13-Hiding-Data-with-Steganography.md)
 - [第14章：构建命令和控制的RAT](ch-14/ch14-BUILDING-A-COMMAND-AND-CONTROL-RAT.md)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=YYRise/black-hat-go&type=Date)](https://star-history.com/#YYRise/black-hat-go&Date)
